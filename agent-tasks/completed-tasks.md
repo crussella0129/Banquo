@@ -27,17 +27,17 @@
 ## T-005 (sprint 0)
 - **Description:** The Face src/app.rs — BanquoApp impl eframe::App (0.34 logic/ui API): install-once font latch via pure should_install_fonts, paints centered Iosevka line on a flat tinted field, zero-alpha clear_color for transparency; 2 unit tests. cargo fmt normalized main.rs.
 - **Completed:** 2026-06-15T05:22:00Z
-- **Files modified:** src/app.rs, src/main.rs
-- **Commit:** `c737214`
+- **Files modified:** src/app.rs, .gitignore, Cargo.lock
+- **Commit:** `cf3d1c4`
 
 ## T-006 (sprint 0)
 - **Description:** Four founding ADRs in decisions.md — crate stack (eframe owns wgpu/winit), forbid(unsafe_code) over deny, truth/appearance seam as module boundary, alacritty_terminal core (deferred to M2).
 - **Completed:** 2026-06-15T05:30:00Z
 - **Files modified:** decisions.md
-- **Commit:** `22264eb`
+- **Commit:** `6793cbb`
 
 ## T-007 (sprint 0)
 - **Description:** README.md — what Banquo is, milestone roadmap table (M1 done), cargo run/test instructions, the six guarantees, the subtraction list, licensing.
 - **Completed:** 2026-06-15T05:35:00Z
-- **Files modified:** README.md
-- **Commit:** `f35830a`
+- **Files modified:** README.md, agent-tasks/
+- **Commit:** `782ef09` (this entry's hash back-filled in a follow-up housekeeping commit)

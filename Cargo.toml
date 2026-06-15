@@ -1,0 +1,27 @@
+[package]
+name = "banquo"
+version = "0.0.0"
+edition = "2021"
+description = "Banquo — a most beautiful terminal. A verifiable truth/appearance core with a layered material engine."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/crussella0129/Banquo"
+publish = false
+
+# Milestone 1 is a single binary crate. The truth/appearance seam (design §I/§IV)
+# is expressed as module boundaries (`app` = the Face, `fonts` = appearance) so it
+# cleaves cleanly into a Cargo workspace (`banquo-core` + `banquo-face`) at
+# Milestone 2 when the truth-half (PTY + grid + Snapshot) gains real content.
+# [workspace] table reserved for that split.
+
+[dependencies]
+# eframe transitively owns the pinned `wgpu` and `winit`; depending on it alone
+# (with the wgpu renderer) avoids a double-wgpu tree. Direct `wgpu` is added at
+# Milestone 6 (custom WGSL), matched to eframe's resolved version via `cargo tree`.
+eframe = { version = "0.34", default-features = false, features = [
+    "wgpu",
+    "default_fonts",
+] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"

@@ -23,6 +23,35 @@ pub const BANQUO_MONO: &str = "banquo-mono";
 pub const EMBEDDED_IOSEVKA: Option<&[u8]> =
     Some(include_bytes!("../assets/fonts/Iosevka-Regular.ttf"));
 
+/// The display (UI / hero) faces: proportional **Geist** (SIL OFL 1.1) as a
+/// discrete weight ladder, vendored under `assets/fonts/geist/`.
+///
+/// Two deliberate facts shape this:
+/// - **Geist is proportional, not monospace** — so it is for display text only
+///   (the hero line now, the command palette later). The terminal *grid* must
+///   stay monospace ([`BANQUO_MONO`] / Iosevka) to honor guarantee #3.
+/// - **egui cannot drive a variable font's weight axis** through its public API,
+///   so each weight is a separate static face registered under its own family
+///   name. That's why we ship the static ladder rather than the variable file.
+///
+/// A deliberately small ladder — light for display headings, medium as the body
+/// weight, semibold for emphasis. Not the whole Thin→Black range: the window
+/// should never look like a font specimen sheet.
+pub const GEIST_FACES: &[(&str, &[u8])] = &[
+    (
+        "geist-light",
+        include_bytes!("../assets/fonts/geist/Geist-Light.ttf"),
+    ),
+    (
+        "geist-medium",
+        include_bytes!("../assets/fonts/geist/Geist-Medium.ttf"),
+    ),
+    (
+        "geist-semibold",
+        include_bytes!("../assets/fonts/geist/Geist-SemiBold.ttf"),
+    ),
+];
+
 /// Which face actually backs [`BANQUO_MONO`] after building the definitions.
 ///
 /// Honesty over silent fallback (design guarantee #6): the choice is a value the
@@ -81,6 +110,29 @@ pub fn build_font_definitions(embedded: Option<&[u8]>) -> (FontDefinitions, Font
     }
 }
 
+/// Register the [`GEIST_FACES`] display ladder into `defs`. Each weight becomes
+/// its own `FontFamily::Name("geist-…")`, addressable by the Face for display
+/// text. Does not touch the monospace family — Geist is proportional.
+fn register_geist_faces(defs: &mut FontDefinitions) {
+    for (family, bytes) in GEIST_FACES {
+        defs.font_data
+            .insert((*family).to_owned(), Arc::new(FontData::from_static(bytes)));
+        defs.families.insert(
+            FontFamily::Name((*family).into()),
+            vec![(*family).to_owned()],
+        );
+    }
+}
+
+/// Build the full font set Banquo paints with: the monospace face
+/// ([`build_font_definitions`]) **plus** the Geist display ladder. This is what
+/// the Face installs; `build_font_definitions` remains the pure mono-only core.
+pub fn build_fonts(embedded: Option<&[u8]>) -> (FontDefinitions, FontSource) {
+    let (mut defs, source) = build_font_definitions(embedded);
+    register_geist_faces(&mut defs);
+    (defs, source)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -134,6 +186,23 @@ mod tests {
             });
             assert!(has, "banquo-mono must provide glyphs for the painted text");
         });
+    }
+
+    #[test]
+    fn test_build_fonts_registers_geist_ladder() {
+        let (defs, _) = build_fonts(EMBEDDED_IOSEVKA);
+        // Every Geist weight is registered as its own addressable family...
+        for (family, _) in GEIST_FACES {
+            assert!(
+                defs.families
+                    .contains_key(&FontFamily::Name((*family).into())),
+                "display family `{family}` must be registered"
+            );
+        }
+        // ...and the mono family is untouched (Geist is proportional).
+        assert!(defs
+            .families
+            .contains_key(&FontFamily::Name(BANQUO_MONO.into())));
     }
 
     #[test]

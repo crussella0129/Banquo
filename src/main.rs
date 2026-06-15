@@ -20,9 +20,9 @@ mod app;
 mod fonts;
 
 /// The window's initial logical size. Milestone 1 holds font size constant and
-/// adapts geometry to text (design guarantee #4); here we just pick a pleasant
-/// default for the single static line.
-const INITIAL_SIZE: [f32; 2] = [820.0, 240.0];
+/// adapts geometry to text (design guarantee #4); here we pick a pleasant default
+/// for the two-line hero card.
+const INITIAL_SIZE: [f32; 2] = [760.0, 280.0];
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -40,7 +40,7 @@ fn main() -> eframe::Result {
             // itself" (design §VII) — the window is just the looking-glass.
             .with_decorations(false)
             .with_inner_size(INITIAL_SIZE)
-            .with_min_inner_size([320.0, 120.0]),
+            .with_min_inner_size([420.0, 180.0]),
         ..Default::default()
     };
 

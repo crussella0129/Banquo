@@ -18,11 +18,21 @@ The full design argument lives in [`BANQUO_DESIGN.md`](./BANQUO_DESIGN.md).
 
 **Milestone 1 — "A window that is unmistakably yours."** ✅ *(current)*
 
-A frameless, transparency-capable `eframe` + `wgpu` window painting one centered
-line of monospace (Iosevka) text on a flat tinted field, with
-`#![forbid(unsafe_code)]`. This proves the toolchain end-to-end (compile → window
-→ font pipeline → wgpu backend) and lays down the truth/appearance module seam.
+A frameless, transparency-capable `eframe` + `wgpu` window with
+`#![forbid(unsafe_code)]`, proving the toolchain end-to-end (compile → window →
+font pipeline → wgpu backend) and laying down the truth/appearance module seam.
 No PTY, grid, or materials yet.
+
+It currently paints a small **typographic specimen** on a flat tinted field —
+the hero tagline plus a Geist weight ladder (Thin → Black) and one Iosevka
+monospace line — exercising Banquo's two font roles:
+
+- **Mono / grid:** **Iosevka** (`banquo-mono`). The terminal grid must be
+  monospace (guarantee #3); this is the face it will use.
+- **Display / UI:** **Geist**, a proportional family registered as a discrete
+  weight ladder (egui can't drive a variable font's weight axis, so each weight
+  is its own static face). For the hero now, the command palette later — never
+  the grid.
 
 The milestone roadmap (design §VI):
 
@@ -42,7 +52,7 @@ The milestone roadmap (design §VI):
 cargo run
 ```
 
-A borderless window opens showing the line in Iosevka on a flat field; the
+A borderless window opens showing the typographic specimen on a flat field; the
 desktop reads faintly through the substrate (the window is transparency-capable —
 true Zircon glass is Milestone 5). Requires a working wgpu backend (D3D12/Vulkan/
 Metal). Startup prints which monospace face loaded (`Embedded` = Iosevka).

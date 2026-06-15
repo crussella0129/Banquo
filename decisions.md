@@ -5,6 +5,28 @@ future work; later sprints' "ignored-ADR" review screens against this log.
 
 ---
 
+## 2026-06-15 — ADR-005: Milestone-1 substrate = flat tinted field + zero-alpha clear — *Accepted* (sprint 0)
+
+**Context.** The user's instruction for M1 was a "frameless transparent window";
+the design doc's §VI M1 says one line "on a flat field," and reserves true glass
+(Zircon, transparent substrate + compositor blur + contrast scrim) for Milestone
+5. A naive full alpha-0 clear leaves no flat field and exposes the text-AA-over-
+nothing muddiness the design explicitly flags for Zircon (§V).
+
+**Decision.** Separate the two: the framebuffer `clear_color` is fully transparent
+(`[0,0,0,0]`) so the window is genuinely transparency-capable, while the visible
+substrate is a near-opaque (~0.92 alpha) flat tinted field painted on top. This is
+"transparency-capable, not yet Zircon." The eframe `App` is implemented against
+the 0.34 `logic`/`ui` split (not the deprecated `update`); the install-once font
+latch lives in `logic`, painting in `ui`.
+
+**Consequences.** Honors both the user's transparency ask and the design's M1
+"flat field" + M5 glass sequencing; gives glyph AA a stable backing. When Zircon
+lands (M5) it replaces this flat field with the real `trait Substrate` + capability
+model — this ADR is the explicit placeholder it supersedes.
+
+---
+
 ## 2026-06-15 — ADR-001: Crate stack (eframe owns wgpu/winit) — *Accepted* (sprint 0)
 
 **Context.** Banquo is a 100% Rust GUI terminal (design §I). The Face is built on

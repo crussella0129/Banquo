@@ -4,7 +4,8 @@
 //! face?" to an [`egui::FontDefinitions`] plus an observable [`FontSource`]. It
 //! holds no `egui::Context`, touches no wgpu, and never blocks — which is exactly
 //! what lets it be unit-tested headlessly (the tests at the bottom run with no
-//! window). The [`crate::app`] Face installs the result on its first frame.
+//! window). The [`crate::app`] Face installs the result up front, in its
+//! constructor, before the first frame.
 
 use std::sync::Arc;
 
@@ -107,6 +108,32 @@ mod tests {
             Some(BANQUO_MONO),
             "embedded Iosevka should lead the Monospace family"
         );
+    }
+
+    #[test]
+    fn test_banquo_mono_binds_in_a_real_context() {
+        // Regression guard for the "FontFamily::Name(banquo-mono) is not bound to
+        // any fonts" panic: build the definitions, install them into a real
+        // (headless) egui context, run one frame, and actually lay out text in the
+        // banquo-mono family. If the family weren't registered/resolvable, the
+        // `painter.text` call would panic and fail this test.
+        let ctx = egui::Context::default();
+        let (defs, _) = build_font_definitions(EMBEDDED_IOSEVKA);
+        ctx.set_fonts(defs);
+        let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let family = egui::FontFamily::Name(BANQUO_MONO.into());
+            // The exact inverse of the runtime panic: the family must be *bound*.
+            let bound = ui.ctx().fonts(|fonts| fonts.families().contains(&family));
+            assert!(
+                bound,
+                "banquo-mono must be a bound font family after set_fonts"
+            );
+            // And it must actually provide glyphs.
+            let has = ui.ctx().fonts_mut(|fonts| {
+                fonts.has_glyphs(&egui::FontId::new(14.0, family.clone()), "banquo")
+            });
+            assert!(has, "banquo-mono must provide glyphs for the painted text");
+        });
     }
 
     #[test]

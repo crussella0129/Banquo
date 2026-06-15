@@ -5,9 +5,9 @@
 //! given the same inputs, paints the same pixels — here just
 //! `render(line, flat_field)` instead of the eventual `render(snapshot, material)`.
 //!
-//! Everything that decides *what* gets painted is factored into pure helpers and
-//! a small [`FontInstaller`] state machine, so the Face's behavior is asserted
-//! headlessly (see the tests) — only the actual rasterization needs a window.
+//! Everything that decides *what* gets painted is factored into pure helpers, so
+//! the Face's choices are asserted headlessly (see the tests) — only the actual
+//! rasterization needs a window.
 
 use eframe::{App, CreationContext};
 use egui::{Align2, Color32, FontFamily, FontId};
@@ -55,58 +55,30 @@ fn glyph_font_id() -> FontId {
     FontId::new(FONT_SIZE, FontFamily::Name(BANQUO_MONO.into()))
 }
 
-/// Pure decision for the font-install latch: install only while not yet
-/// installed. Kept as a named predicate (the build-plan's success criterion names
-/// it) and reused inside [`FontInstaller`].
-pub fn should_install_fonts(installed: bool) -> bool {
-    !installed
-}
-
-/// The install-once latch as a tiny, context-free state machine. Holds the staged
-/// font definitions and yields them on the *first* call only; every later call
-/// returns `None`. This is the "fonts installed exactly once" guarantee as plain
-/// state — testable with no `egui::Context` or window.
-struct FontInstaller {
-    staged: Option<egui::FontDefinitions>,
-    installed: bool,
-}
-
-impl FontInstaller {
-    fn new(staged: egui::FontDefinitions) -> Self {
-        Self {
-            staged: Some(staged),
-            installed: false,
-        }
-    }
-
-    /// Return the staged definitions exactly once (latching `installed`), then
-    /// `None` forever after.
-    fn take_for_install(&mut self) -> Option<egui::FontDefinitions> {
-        if !should_install_fonts(self.installed) {
-            return None;
-        }
-        self.installed = true;
-        self.staged.take()
-    }
-}
-
 /// Banquo's application state for Milestone 1.
 pub struct BanquoApp {
-    /// The install-once font latch.
-    installer: FontInstaller,
     /// Which face actually backs [`BANQUO_MONO`] — reportable per guarantee #6.
     font_source: FontSource,
 }
 
 impl BanquoApp {
-    /// Construct the app, resolving the font definitions up front (pure, no
-    /// context needed) and staging them for first-frame install.
-    pub fn new(_cc: &CreationContext<'_>) -> Self {
+    /// Construct the app and install the fonts **up front**, before the first
+    /// frame.
+    ///
+    /// Fonts must be set here (via `cc.egui_ctx`), not on the first frame:
+    /// `Context::set_fonts` only takes effect at the *next* frame's font-atlas
+    /// rebuild, so installing it during the first `ui` pass would paint
+    /// `banquo-mono` before it is bound and panic ("not bound to any fonts").
+    /// Installing in `new` means the family is resolvable by the time anything
+    /// paints — and it happens exactly once by construction.
+    pub fn new(cc: &CreationContext<'_>) -> Self {
         let (defs, font_source) = build_font_definitions(EMBEDDED_IOSEVKA);
-        Self {
-            installer: FontInstaller::new(defs),
-            font_source,
-        }
+        cc.egui_ctx.set_fonts(defs);
+        let app = Self { font_source };
+        // Honest report of which face actually backs the monospace family
+        // (guarantee #6) — local stderr, once, no telemetry.
+        eprintln!("banquo: monospace face = {:?}", app.font_source());
+        app
     }
 
     /// Which face backs the monospace family (Iosevka when embedded, the built-in
@@ -117,18 +89,6 @@ impl BanquoApp {
 }
 
 impl App for BanquoApp {
-    /// State-only pass (no painting): install fonts exactly once, on the first
-    /// frame. eframe calls `logic` before each `ui`, with the context available
-    /// and painting forbidden — the right home for the install-once latch.
-    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if let Some(defs) = self.installer.take_for_install() {
-            ctx.set_fonts(defs);
-            // Honest report of which face actually backs the monospace family
-            // (guarantee #6) — local stderr, once, no telemetry.
-            eprintln!("banquo: monospace face = {:?}", self.font_source());
-        }
-    }
-
     /// Paint pass. eframe hands us a margin-less, background-less `Ui` spanning
     /// the root viewport — this *is* the central area, so we fill it with the
     /// flat field and center the one line on it.
@@ -155,39 +115,6 @@ impl App for BanquoApp {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_should_install_fonts_first_frame() {
-        assert!(
-            should_install_fonts(false),
-            "fonts must be installed when not yet installed"
-        );
-    }
-
-    #[test]
-    fn test_should_install_fonts_latched() {
-        assert!(
-            !should_install_fonts(true),
-            "fonts must not be re-installed once the latch is set"
-        );
-    }
-
-    #[test]
-    fn test_font_installer_yields_exactly_once() {
-        let mut installer = FontInstaller::new(egui::FontDefinitions::default());
-        assert!(
-            installer.take_for_install().is_some(),
-            "first frame must yield the staged fonts to install"
-        );
-        assert!(
-            installer.take_for_install().is_none(),
-            "subsequent frames must not re-yield (installed exactly once)"
-        );
-        assert!(
-            installer.installed,
-            "latch must be set after the first install"
-        );
-    }
 
     #[test]
     fn test_line_text_is_the_thesis() {

@@ -5,6 +5,37 @@ future work; later sprints' "ignored-ADR" review screens against this log.
 
 ---
 
+## 2026-06-15 — ADR-006: Font strategy — curated OFL defaults + user-supplied premium via config — *Accepted* (sprint 0; built at Milestone 3)
+
+**Context.** The user wants a *sophisticated, design-language-grade* monospace
+selection (Klim-tier), open to licensed premium faces. But Banquo embeds fonts in
+the binary (`include_bytes!`) and the repo is on GitHub — and the standout premium
+monospaces (**Berkeley Mono**, Klim's **Söhne Mono**, Mass-Driver's **MD IO**,
+**MonoLisa**, Operator Mono, PragmataPro) are **licensed and may not be
+redistributed/embedded** in a public repo. We also keep two type *roles*: mono
+(grid, must be monospace — guarantee #3) and display (UI/hero, currently Geist).
+
+**Decision.** A two-source font registry:
+1. **Curated embedded defaults — OFL/Apache only**, so out-of-box quality is high
+   with zero license risk. Mono candidates: Iosevka (current), JetBrains Mono,
+   IBM Plex Mono (named in §VI M3), Commit Mono, Monaspace, Geist Mono. Display:
+   Geist (in).
+2. **User-supplied premium — load by path from the TOML config**, never vendored.
+   This lets a user point Banquo at *their own licensed* Berkeley Mono / Söhne
+   Mono / MD IO on their machine. Matches the design's config-driven, no-network,
+   honest ethos (§VII) — Banquo ships great free faces and *respects* licensing
+   rather than pirating it. (If we ever bundle a premium face, it needs an app
+   font licence, e.g. Klim's perpetual App Font Licence.)
+
+**Consequences.** Default install is legally clean and looks good; power users get
+foundry-grade faces without Banquo redistributing them. The font system must
+support runtime loading from arbitrary paths (validated, with honest fallback —
+guarantee #6) in addition to the embedded set. egui weight-axis limitation
+(ADR-noted in `fonts.rs`) means weights remain discrete static faces. Built at
+Milestone 3 ("Typography you'd brag about").
+
+---
+
 ## 2026-06-15 — ADR-005: Milestone-1 substrate = flat tinted field + zero-alpha clear — *Accepted* (sprint 0)
 
 **Context.** The user's instruction for M1 was a "frameless transparent window";

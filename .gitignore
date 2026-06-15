@@ -1,3 +1,8 @@
+# Rust build output — never commit (huge .rlib/.pdb artifacts).
+/target/
+
+# Keep Cargo.lock tracked: Banquo is a binary, so a reproducible lockfile is
+# wanted.
 
 # >>> sprint-loops >>>
 # Ephemeral sprint working memory — regenerable; the real outcome lives in the

@@ -7,6 +7,12 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/crussella0129/Banquo"
 publish = false
 
+# Declare Banquo its own workspace root. Beyond the Milestone-2 split this also
+# stops cargo from climbing into any unrelated ancestor Cargo.toml on the dev's
+# machine (the home directory may contain stray manifests). Members are added at
+# Milestone 2 when the truth/appearance seam becomes `banquo-core` + `banquo-face`.
+[workspace]
+
 # Milestone 1 is a single binary crate. The truth/appearance seam (design §I/§IV)
 # is expressed as module boundaries (`app` = the Face, `fonts` = appearance) so it
 # cleaves cleanly into a Cargo workspace (`banquo-core` + `banquo-face`) at
@@ -21,6 +27,10 @@ eframe = { version = "0.34", default-features = false, features = [
     "wgpu",
     "default_fonts",
 ] }
+# egui is re-exported by eframe, but Banquo references egui types directly
+# (FontDefinitions, ViewportBuilder, …), so declare it at the same minor version
+# eframe resolves to keep a single egui in the tree.
+egui = "0.34"
 
 [profile.release]
 opt-level = 3

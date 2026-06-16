@@ -5,6 +5,72 @@ future work; later sprints' "ignored-ADR" review screens against this log.
 
 ---
 
+## 2026-06-15 — ADR-009: Platform strategy — Unix-compatible base first, OS-specific components on top — *Accepted* (sprint 0; built later) — *extends design §VIII*
+
+**Context.** The design's §VIII already quarantines portability behind a single
+`trait Substrate` (the only place `#[cfg(target_os)]` is allowed). The user wants
+this generalized beyond the substrate: **build the Unix-compatible base, then layer
+OS-specific compatibility components.** Concretely surfaced on this Windows machine:
+the frameless window is "too minimal" and PowerShell/elevation needs differ from
+Unix.
+
+**Decision.** Establish a base layer that targets the Unix model (Linux/macOS/BSD:
+one PTY, `sudo` inside the shell, no "admin mode" concept), then add **per-OS
+components** that compose on top, behind traits like the existing `Substrate` — for
+window chrome (ADR-008), shell wiring, and privilege/elevation. Windows-specific:
+- Wire to **PowerShell** specifically (in addition to ConPTY generic spawn) so the
+  shell can be launched **elevated (admin)** when requested.
+- When running elevated, show a **shield indicator** (top-left). The base has *no*
+  shield — Unix has no admin-mode concept, so the indicator is a Windows-only
+  component, not in the universal core.
+
+**Consequences.** The universal core stays platform-agnostic; OS quirks live in
+named, optional components. New platform = implement the relevant component traits,
+nothing above moves. Keeps guarantee #1 (no unsafe) and the truth/appearance seam
+intact.
+
+---
+
+## 2026-06-15 — ADR-008: Window chrome as an overridable component — *Accepted* (sprint 0; built later)
+
+**Context.** Banquo is frameless (`with_decorations(false)`, design §VII / M1). That
+means **no native title bar** — no mouse drag-to-move, no resize handles, no close
+button. Confirmed painful on Windows now: the window can't be mouse-dragged or
+closed (Alt+F4 still works). Doing custom drag/resize well is non-trivial.
+
+**Decision.** Build a **window-chrome component** that provides drag-to-move, resize
+affordances, and a **close control** — but make it **overridable / supersedable by
+the DE/compositor's native window management** where that exists (so we don't fight
+the WM on Linux/Wayland). The close affordance is a small stylized "×" / window-
+closing icon in the **top-right**, and it **appears and disappears together with
+the tabs** (ADR-007).
+
+**Consequences.** Frameless aesthetic is preserved while the window becomes usable
+on bare Windows; on a capable compositor the native controls can take over. The
+component is part of the per-OS layering (ADR-009), not the universal core.
+
+---
+
+## 2026-06-15 — ADR-007: Collapsing terminal tabs — *Accepted, REVISES design §VII* (sprint 0; built later)
+
+**Context.** Design §VII says **"No tabs, no splits, no multiplexing"** — compose
+with a real WM/`tmux`. The user (the author of that constraint) is **deliberately
+overriding the tabs part**: they want tabs, but unobtrusive ones.
+
+**Decision.** Add **terminal tabs** that **auto-collapse**: the tab strip (and the
+top-right close icon, ADR-008) is hidden by default and **reveals when the cursor
+moves to the top edge of the window**, hiding again when it leaves. To keep §VII's
+spirit (don't become `tmux`): **tabs only — no splits, no panes, no multiplexing
+logic.** Each tab is an independent PTY+core; the Face just switches which snapshot
+it renders.
+
+**Consequences.** A real revision of the design doc — §VII's "no tabs" no longer
+holds; "no splits/multiplexing" still does. The truth/appearance seam makes this
+clean: N independent cores, one Face selecting among their snapshots. Revisit §VII
+prose in `BANQUO_DESIGN.md` when convenient.
+
+---
+
 ## 2026-06-15 — ADR-006: Font strategy — curated OFL defaults + user-supplied premium via config — *Accepted* (sprint 0; built at Milestone 3)
 
 **Context.** The user wants a *sophisticated, design-language-grade* monospace
@@ -33,6 +99,23 @@ support runtime loading from arbitrary paths (validated, with honest fallback �
 guarantee #6) in addition to the embedded set. egui weight-axis limitation
 (ADR-noted in `fonts.rs`) means weights remain discrete static faces. Built at
 Milestone 3 ("Typography you'd brag about").
+
+**Licensing clarification (publishing as a crate).** Whether a published crate is
+"immutable and unencrypted" is **irrelevant** to font licensing — and unencrypted
+actually makes it *worse*, because the `.ttf` is trivially extractable by anyone
+who downloads the crate. Publishing to crates.io is **public redistribution** of
+whatever font bytes are embedded. So:
+- **OFL/Apache faces (Geist, Iosevka, JetBrains Mono, …): fine to bundle** in a
+  public crate — OFL explicitly permits redistribution. **Geist Light stays**, and
+  we add **one OFL serif** display face (user wants Geist Light + one serif, not a
+  pile of fonts).
+- **Klim / Berkeley / MD IO / other licensed faces: NOT okay** to ship in a public
+  crate, regardless of format. A foundry "app font licence" lets you embed a font
+  in *your distributed application*, but an open crate exposing the raw `.ttf`
+  effectively grants every downstream user the font for any use — beyond that
+  licence. Keep them **out of the published crate**; load from the user's machine
+  by config path. (In Banquo's *current private* repo, bundling your own licensed
+  copy for personal use is fine — the constraint bites only on public release.)
 
 ---
 

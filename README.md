@@ -40,11 +40,11 @@ The milestone roadmap (design §VI):
 |---|-----------|-------|
 | 1 | Window + one Iosevka line | ✅ done |
 | 2 | It echoes — `alacritty_terminal` core, PTY, snapshot handoff (becomes a real terminal) | ✅ done |
-| 3 | Typography you'd brag about — metrics, `pixels_per_point`, wide/CJK, cursor, selection, scrollback | next |
-| 4 | The layer compositor — Blanco + Concrete | — |
-| 5 | Glass + the capability model — Zircon, 3-tier degradation | — |
+| 3 | Typography you'd brag about — metrics, cursor, hot-swappable TOML Configurator | ✅ done |
+| 4 | The layer compositor — multi-tab support, dynamic Grid Auto-Snap rendering | ✅ done |
+| 5 | Glass + the capability model — Zircon, 3-tier degradation | next |
 | 6 | Fire — Volcanic Glass via custom WGSL (`CallbackTrait`) | — |
-| 7 | The finish — command palette, config hot-reload, motion easing | — |
+| 7 | The finish — command palette, config hot-reload, motion easing | in progress |
 
 ## Run it
 
@@ -71,12 +71,25 @@ Banquo dies for these; a feature request that violates one is answered *no*.
 5. **A theme can never kill your shell** — truth and appearance are separate lifetimes; appearance is disposable.
 6. **It tells the truth about what it can't do** — materials degrade visibly and honestly; Banquo never fakes a capability it lacks.
 
+## Banquo Compose (Configurator)
+
+Banquo features a dynamic TOML configurator known as **Banquo Compose**. You can hot-swap fonts and alter rendering logic simply by editing your config file (`~/.config/banquo/banquo.toml` on Unix/macOS, or `%APPDATA%\banquo\banquo.toml` on Windows).
+
+```toml
+[fonts]
+monospace_path = "C:\\Users\\charl\\Banquo\\assets\\fonts\\Geist-Regular.ttf"
+
+[grid]
+mode = "auto"
+```
+
+## Auto-Snap Proportional Rendering Engine
+
+The terminal grid must inherently align character positions. However, when using `grid.mode = "auto"`, Banquo utilizes a revolutionary "Auto-Snap" Proportional Rendering Engine. It calculates the exact typographic advance width of every character to dynamically position cells, turning your terminal from a rigid grid into a beautifully typeset document—all without breaking the cursor logic or SGR background colors!
+
 ## What Banquo refuses to be (design §VII)
 
-No tabs/splits/multiplexing (compose with a real WM), no config GUI (edit the
-TOML in the terminal Banquo renders), no telemetry / auto-update / **network code
-at all**, and no ligatures in v1. Its entire surface to the outside world is one
-PTY and one config file.
+While Banquo features an incredibly sleek, unopinionated **Multi-Tab** interface that seamlessly allows multiple independent PTY sessions, it refuses to handle splits/pane multiplexing (compose with a real WM like sway, or run tmux). There is no telemetry, no auto-update, and **no network code at all**. Its entire surface to the outside world is one PTY per tab and one config file.
 
 ## License
 

@@ -48,7 +48,14 @@
 - **Files modified:** .github/workflows/ci.yml, agent-tasks/agent-tasks.md
 - **Commit:** `9b41d11`
 
-## Sprint 2 (Milestone 2 - Window Chrome)
+## Sprint 3 (Milestone 2 - Tabs & Auto-Collapse)
+- `[x]` T-300: Update `BanquoApp` struct: replace `session: SessionHandle` with `sessions: Vec<SessionHandle>`, `active_tab: usize`, `last_mouse_pos: Option<Pos2>`, and `last_mouse_move_time: Instant`.
+- `[x]` T-301: Update `BanquoApp::new` to initialize the vector with the first session. Update render loop to use `self.sessions[self.active_tab]`.
+- `[x]` T-302: Implement `BanquoApp` methods/logic to spawn a new tab (Ctrl+Shift+T) and close the active tab (Ctrl+Shift+W).
+- `[x]` T-303: In `BanquoApp::update`, remove the code that offsets `content_rect` downwards. The terminal grid must occupy the full window.
+- `[x]` T-304: Implement idle detection: Update `last_mouse_pos` and `last_mouse_move_time` when pointer moves. Evaluate `show_tabs = pointer.y <= 40.0 && time_since_move < 3s`.
+- `[x]` T-305: When `show_tabs` is true, render the tab bar overlay using `egui::Area` (or a window without frames) anchored to the top. Draw the custom window chrome (drag rect, close button) inside this overlay.
+- `[x]` T-306: Render the active tabs inside the overlay, allowing the user to click to switch `active_tab`, and a `+` button to spawn a new tab.
 - `[x]` T-200: Implement OS-detection config flag in `main.rs` to set `ViewportBuilder::with_decorations` appropriately (true for Unix/macOS, false for Windows).
 - `[x]` T-201: Pass `decorations: bool` flag into `BanquoApp`'s state.
 - `[x]` T-202: If `!decorations`, render an invisible drag-to-move rect at the top of `BanquoApp::update` sending `ViewportCommand::StartDrag`.

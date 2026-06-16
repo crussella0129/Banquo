@@ -12,11 +12,8 @@
 ### Sprint 2: Window chrome & controls — ADR-008 (per-OS component, not core)
 <!-- T-200 through T-205 completed; see completed-tasks.md. -->
 
-### Tabs — ADR-007 (REVISES design §VII "no tabs")
-- [ ] Terminal tabs that AUTO-COLLAPSE: tab strip + top-right close icon hidden
-      by default, reveal when the cursor goes to the top edge, hide on leave.
-- [ ] Tabs ONLY — no splits/panes/multiplexing (keep §VII's spirit). Each tab =
-      independent PTY+core; Face switches which snapshot it renders.
+### Sprint 3: Tabs & Auto-Collapse — ADR-007
+<!-- T-300 through T-306 completed; see completed-tasks.md. -->
 
 ### Platform layering — ADR-009 (extends §VIII)
 - [ ] Build the Unix-compatible BASE first, then OS-specific compatibility

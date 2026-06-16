@@ -10,8 +10,9 @@
 use std::io::Write;
 
 use eframe::{App, CreationContext};
-use egui::{Color32, Event, FontFamily, FontId, Key, Modifiers, Rect, Vec2};
+use egui::{Color32, Event, FontFamily, FontId, Key, Modifiers, Rect, Vec2, Pos2};
 use std::sync::Arc;
+use std::time::{Instant, Duration};
 
 use crate::core::session::SessionHandle;
 use crate::core::snapshot::{Rgb, Snapshot};
@@ -135,14 +136,19 @@ pub struct BanquoApp {
     /// Which face backs the monospace family (guarantee #6).
     #[allow(dead_code)] // Exposed for honest reporting; used at startup.
     font_source: FontSource,
-    /// The terminal session handle (snapshot reader, PTY writer, resize).
-    session: SessionHandle,
+    /// The terminal sessions (one per tab).
+    sessions: Vec<SessionHandle>,
+    /// The index of the currently active tab.
+    active_tab: usize,
     /// Cell metrics derived from the monospace font.
     cell_metrics: Option<CellMetrics>,
     /// Last-sent grid size — only send a resize when this changes.
     last_grid_size: Option<(usize, usize)>,
     /// Whether the app is using native OS decorations (true) or custom chrome (false).
     native_decorations: bool,
+    /// Tracking mouse for auto-collapse tabs.
+    last_mouse_pos: Option<Pos2>,
+    last_mouse_move_time: Instant,
 }
 
 impl BanquoApp {
@@ -153,10 +159,13 @@ impl BanquoApp {
         eprintln!("banquo: monospace face = {:?}", font_source);
         Self {
             font_source,
-            session,
+            sessions: vec![session],
+            active_tab: 0,
             cell_metrics: None,
             last_grid_size: None,
             native_decorations,
+            last_mouse_pos: None,
+            last_mouse_move_time: Instant::now(),
         }
     }
 
@@ -201,50 +210,141 @@ impl App for BanquoApp {
         // Flat field substrate.
         painter.rect_filled(rect, 0.0, FLAT_FIELD);
 
-        let mut content_rect = rect;
+        let content_rect = rect;
 
-        if !self.native_decorations {
+        // --- IDLE DETECTION ---
+        let hover_pos = ctx.input(|i| i.pointer.hover_pos());
+        if let Some(pos) = hover_pos {
+            if self.last_mouse_pos != Some(pos) {
+                self.last_mouse_move_time = Instant::now();
+                self.last_mouse_pos = Some(pos);
+            }
+        }
+        
+        let time_since_move = Instant::now().duration_since(self.last_mouse_move_time);
+        let pointer_y = hover_pos.map(|p| p.y).unwrap_or(f32::MAX);
+        
+        // Show tabs if mouse is within top 40px AND moved within the last 3 seconds
+        let show_tabs = pointer_y <= 40.0 && time_since_move < Duration::from_secs(3);
+
+        // --- OVERLAY DRAWING ---
+        if show_tabs {
             let title_bar_height = 32.0;
             let title_bar_rect = Rect::from_min_size(
                 rect.min,
                 Vec2::new(rect.width(), title_bar_height),
             );
 
-            // Drag to move
-            let title_bar_response = ui.interact(title_bar_rect, ui.id().with("title_bar"), egui::Sense::click_and_drag());
-            if title_bar_response.dragged() {
-                ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
-            }
+            // Draw over the grid using an egui::Area
+            egui::Area::new("tab_bar_overlay".into())
+                .fixed_pos(rect.min)
+                .order(egui::Order::Foreground)
+                .show(&ctx, |ui| {
+                    // Paint background for tabs area
+                    ui.painter().rect_filled(title_bar_rect, 0.0, Color32::from_rgba_premultiplied(30, 28, 35, 250)); // Slightly lighter/opaque than FLAT_FIELD
 
-            // Close button (top right)
-            let close_button_size = 32.0;
-            let close_rect = Rect::from_min_size(
-                egui::pos2(rect.max.x - close_button_size, rect.min.y),
-                Vec2::new(close_button_size, close_button_size),
-            );
-            
-            let close_response = ui.interact(close_rect, ui.id().with("close_btn"), egui::Sense::click());
-            
-            // Draw close button (a simple X)
-            let cross_color = if close_response.hovered() {
-                Color32::WHITE
-            } else {
-                Color32::from_gray(128)
-            };
-            
-            let stroke = egui::Stroke::new(1.5, cross_color);
-            let p1 = close_rect.center() - Vec2::new(4.0, 4.0);
-            let p2 = close_rect.center() + Vec2::new(4.0, 4.0);
-            painter.line_segment([p1, p2], stroke);
-            let p3 = close_rect.center() - Vec2::new(4.0, -4.0);
-            let p4 = close_rect.center() + Vec2::new(4.0, -4.0);
-            painter.line_segment([p3, p4], stroke);
+                    if !self.native_decorations {
+                        // Drag to move
+                        let title_bar_response = ui.interact(title_bar_rect, ui.id().with("title_bar"), egui::Sense::click_and_drag());
+                        if title_bar_response.dragged() {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+                        }
 
-            if close_response.clicked() {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            }
+                        // Close button (top right)
+                        let close_button_size = 32.0;
+                        let close_rect = Rect::from_min_size(
+                            egui::pos2(rect.max.x - close_button_size, rect.min.y),
+                            Vec2::new(close_button_size, close_button_size),
+                        );
+                        
+                        let close_response = ui.interact(close_rect, ui.id().with("close_btn"), egui::Sense::click());
+                        
+                        // Draw close button (a simple X)
+                        let cross_color = if close_response.hovered() {
+                            Color32::WHITE
+                        } else {
+                            Color32::from_gray(128)
+                        };
+                        
+                        let stroke = egui::Stroke::new(1.5, cross_color);
+                        let p1 = close_rect.center() - Vec2::new(4.0, 4.0);
+                        let p2 = close_rect.center() + Vec2::new(4.0, 4.0);
+                        ui.painter().line_segment([p1, p2], stroke);
+                        let p3 = close_rect.center() - Vec2::new(4.0, -4.0);
+                        let p4 = close_rect.center() + Vec2::new(4.0, -4.0);
+                        ui.painter().line_segment([p3, p4], stroke);
 
-            // Resize borders (invisible edges)
+                        if close_response.clicked() {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
+                    }
+
+                    // Render Tabs
+                    let mut tab_x = rect.min.x + 8.0;
+                    let tab_y = rect.min.y + 6.0;
+                    let tab_h = 24.0;
+                    
+                    for i in 0..self.sessions.len() {
+                        let tab_w = 80.0;
+                        let tab_rect = Rect::from_min_size(
+                            egui::pos2(tab_x, tab_y),
+                            Vec2::new(tab_w, tab_h)
+                        );
+                        
+                        let tab_resp = ui.interact(tab_rect, ui.id().with(format!("tab_{}", i)), egui::Sense::click());
+                        if tab_resp.clicked() {
+                            self.active_tab = i;
+                        }
+                        
+                        let bg_color = if i == self.active_tab {
+                            Color32::from_rgba_premultiplied(80, 80, 90, 255)
+                        } else if tab_resp.hovered() {
+                            Color32::from_rgba_premultiplied(50, 50, 60, 255)
+                        } else {
+                            Color32::TRANSPARENT
+                        };
+                        
+                        ui.painter().rect_filled(tab_rect, 4.0, bg_color);
+                        
+                        ui.painter().text(
+                            tab_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            format!("Tab {}", i + 1),
+                            FontId::proportional(14.0),
+                            if i == self.active_tab { Color32::WHITE } else { Color32::GRAY },
+                        );
+                        
+                        tab_x += tab_w + 4.0;
+                    }
+                    
+                    // Add Tab Button
+                    let add_rect = Rect::from_min_size(
+                        egui::pos2(tab_x, tab_y),
+                        Vec2::new(24.0, tab_h)
+                    );
+                    let add_resp = ui.interact(add_rect, ui.id().with("add_tab_btn"), egui::Sense::click());
+                    if add_resp.clicked() {
+                        if let Some((cols, rows)) = self.last_grid_size {
+                            if let Ok(new_session) = crate::core::session::spawn(cols, rows) {
+                                self.sessions.push(new_session);
+                                self.active_tab = self.sessions.len() - 1;
+                            }
+                        }
+                    }
+                    
+                    ui.painter().text(
+                        add_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "+",
+                        FontId::proportional(16.0),
+                        if add_resp.hovered() { Color32::WHITE } else { Color32::GRAY },
+                    );
+                });
+        }
+
+        // Resize borders (invisible edges) MUST ALWAYS be active, even when tabs are hidden, 
+        // so you can resize the window at any time.
+        if !self.native_decorations {
             let border = 6.0;
             let edges: [(egui::Align2, Vec2, egui::CursorIcon, egui::ViewportCommand); 4] = [
                 (egui::Align2::LEFT_TOP, Vec2::new(border, rect.height()), egui::CursorIcon::ResizeHorizontal, egui::ViewportCommand::BeginResize(egui::ResizeDirection::West)),
@@ -264,19 +364,19 @@ impl App for BanquoApp {
                     ctx.send_viewport_cmd(cmd);
                 }
             }
-
-            content_rect.min.y += title_bar_height;
         }
 
         // Load the latest snapshot (lock-free, guarantee #2).
-        let snapshot: Arc<Snapshot> = self.session.snapshot.load_full();
+        let snapshot: Arc<Snapshot> = self.sessions[self.active_tab].snapshot.load_full();
 
         if let Some(metrics) = self.cell_metrics {
             // Compute grid size and handle resize (T-110).
             let (cols, rows) = metrics.grid_size(content_rect.width(), content_rect.height(), GRID_PADDING);
 
             if self.last_grid_size != Some((cols, rows)) {
-                self.session.resize(cols, rows);
+                for session in &mut self.sessions {
+                    session.resize(cols, rows);
+                }
                 self.last_grid_size = Some((cols, rows));
             }
 
@@ -356,7 +456,7 @@ impl App for BanquoApp {
             match event {
                 Event::Text(text) => {
                     let bytes = text.as_bytes();
-                    if let Ok(mut writer) = self.session.writer.lock() {
+                    if let Ok(mut writer) = self.sessions[self.active_tab].writer.lock() {
                         let _ = writer.write_all(bytes);
                         let _ = writer.flush();
                     }
@@ -367,6 +467,31 @@ impl App for BanquoApp {
                     modifiers,
                     ..
                 } => {
+                    // Check for tab management shortcuts
+                    if modifiers.ctrl && modifiers.shift {
+                        if *key == Key::T {
+                            // Spawn new tab
+                            if let Some((cols, rows)) = self.last_grid_size {
+                                if let Ok(new_session) = crate::core::session::spawn(cols, rows) {
+                                    self.sessions.push(new_session);
+                                    self.active_tab = self.sessions.len() - 1;
+                                }
+                            }
+                            continue;
+                        } else if *key == Key::W {
+                            // Close current tab
+                            self.sessions.remove(self.active_tab);
+                            if self.sessions.is_empty() {
+                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                                return;
+                            }
+                            if self.active_tab >= self.sessions.len() {
+                                self.active_tab = self.sessions.len() - 1;
+                            }
+                            continue;
+                        }
+                    }
+
                     // Don't double-send printable text that was already handled
                     // by Event::Text. Only encode special/control keys here.
                     let is_special = matches!(
@@ -389,7 +514,7 @@ impl App for BanquoApp {
 
                     if is_special || is_ctrl_letter {
                         if let Some(bytes) = encode_key(*key, *modifiers, "") {
-                            let mut writer = self.session.writer.lock().unwrap();
+                            let mut writer = self.sessions[self.active_tab].writer.lock().unwrap();
                             let _ = writer.write_all(&bytes);
                             let _ = writer.flush();
                         }

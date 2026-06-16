@@ -54,8 +54,8 @@ fn test_window_is_transparent_and_frameless() {
         "main.rs must request a transparent viewport"
     );
     assert!(
-        main.contains("with_decorations(false)"),
-        "main.rs must request an undecorated (frameless) viewport"
+        main.contains("with_decorations(native_decorations)"),
+        "main.rs must request conditional decorations via native_decorations"
     );
 }
 

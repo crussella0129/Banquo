@@ -47,3 +47,9 @@
 - **Completed:** 2026-06-16T04:51:00Z
 - **Files modified:** .github/workflows/ci.yml, agent-tasks/agent-tasks.md
 - **Commit:** `9b41d11`
+
+## T-101 through T-111 (sprint 1)
+- **Description:** Milestone 2 "It echoes" core implementation — PTY spawning, session reader thread, lock-free ArcSwap snapshot publishing, termVT adapter, metrics math, keystroke encoding, and grid rendering in the Face.
+- **Completed:** 2026-06-16T05:01:00Z
+- **Files modified:** Cargo.toml, src/core/*.rs, src/metrics.rs, src/app.rs, src/main.rs, agent-tasks/agent-tasks.md
+- **Commit:** `1e3b0f0`

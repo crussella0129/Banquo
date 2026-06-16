@@ -5,17 +5,7 @@
 
 ## Sprint 1 (Milestone 2 — "It echoes")
 <!-- T-100 completed; see completed-tasks.md. -->
-- [ ] T-101: Add alacritty_terminal, portable-pty, arc-swap deps (`Cargo.toml`)
-- [ ] T-102: Define Snapshot truth surface (`src/core/snapshot.rs`, `src/core/mod.rs`)
-- [ ] T-103: Color translation resolve_color (`src/core/term.rs`)
-- [ ] T-104: BanquoTerm wrapper — advance, resize, build_snapshot (`src/core/term.rs`)
-- [ ] T-105: PTY spawn — open_pty (`src/core/pty.rs`)
-- [ ] T-106: Session reader thread + ArcSwap publish (`src/core/session.rs`)
-- [ ] T-107: CellMetrics grid_size pure math (`src/metrics.rs`)
-- [ ] T-108: Grid render — Face paints snapshot cells (`src/app.rs`)
-- [ ] T-109: Keystroke encoding — encode_key → PTY bytes (`src/app.rs`)
-- [ ] T-110: Resize wiring — size change → SessionHandle::resize (`src/app.rs`)
-- [ ] T-111: Main.rs wiring — spawn Session, pass to Face (`src/main.rs`)
+<!-- T-101 through T-111 completed; see completed-tasks.md. -->
 - [ ] T-112: ADR-010 + README M2 update (`decisions.md`, `README.md`)
 
 ## Future Direction (noted 2026-06-15; for any dev running sprint loops — see ADR-007/008/009)

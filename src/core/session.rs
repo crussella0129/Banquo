@@ -30,7 +30,7 @@ pub struct SessionHandle {
     /// The latest published snapshot. Load with `snapshot.load()`.
     pub snapshot: Arc<ArcSwap<Snapshot>>,
     /// Write end of the PTY — the Face writes encoded keystrokes here.
-    pub writer: Box<dyn Write + Send>,
+    pub writer: Arc<std::sync::Mutex<Box<dyn Write + Send>>>,
     /// The master PTY handle — used for resize.
     master: Box<dyn MasterPty + Send>,
     /// The term wrapper — used for resize (must resize both PTY and term).
@@ -55,6 +55,8 @@ impl SessionHandle {
         // ...then resize the term (so the grid reflows to match).
         if let Ok(mut term) = self.term.lock() {
             term.resize(cols, rows);
+            let snap = term.build_snapshot();
+            self.snapshot.store(Arc::new(snap));
         }
     }
 }
@@ -67,7 +69,9 @@ impl SessionHandle {
 pub fn spawn(cols: usize, rows: usize) -> anyhow::Result<SessionHandle> {
     let pty = super::pty::open_pty(cols as u16, rows as u16)?;
 
-    let term = BanquoTerm::new(cols, rows);
+    let writer_arc = Arc::new(std::sync::Mutex::new(pty.writer));
+    let listener = super::term::BanquoListener::new(Arc::clone(&writer_arc));
+    let term = BanquoTerm::new(cols, rows, listener);
     let term = Arc::new(std::sync::Mutex::new(term));
 
     let initial = Snapshot::empty(cols, rows);
@@ -99,7 +103,7 @@ pub fn spawn(cols: usize, rows: usize) -> anyhow::Result<SessionHandle> {
 
     Ok(SessionHandle {
         snapshot,
-        writer: pty.writer,
+        writer: writer_arc,
         master: pty.master,
         term,
         child: pty.child,

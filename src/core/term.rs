@@ -5,9 +5,10 @@
 //! adapter boundary is the cost of engine-swappability: if we ever forge our own
 //! parser, only this file changes.
 
-use std::sync::Arc;
+use std::io::Write;
+use std::sync::{Arc, Mutex};
 
-use alacritty_terminal::event::VoidListener;
+use alacritty_terminal::event::{Event, EventListener};
 use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::cell::Flags as AlacrittyFlags;
@@ -117,6 +118,37 @@ fn idx_to_named(idx: u8) -> ansi::NamedColor {
 // BanquoTerm (T-104)
 // ---------------------------------------------------------------------------
 
+/// The thin wrapper around `alacritty_terminal::Term` that lives on the reader
+/// thread. Owns the terminal state behind a `FairMutex` (the reader and the
+/// snapshot builder are the same thread, so the mutex is held briefly; the UI
+/// thread never locks it — it reads the published `Arc<Snapshot>` instead).
+pub struct BanquoTerm {
+    term: Arc<FairMutex<Term<BanquoListener>>>,
+    processor: Processor,
+}
+
+#[derive(Clone)]
+pub struct BanquoListener {
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
+}
+
+impl BanquoListener {
+    pub fn new(writer: Arc<Mutex<Box<dyn Write + Send>>>) -> Self {
+        Self { writer }
+    }
+}
+
+impl EventListener for BanquoListener {
+    fn send_event(&self, event: Event) {
+        if let Event::PtyWrite(text) = event {
+            if let Ok(mut w) = self.writer.lock() {
+                let _ = w.write_all(text.as_bytes());
+                let _ = w.flush();
+            }
+        }
+    }
+}
+
 /// Sizing information for `alacritty_terminal::term::Term`.
 struct BanquoDimensions {
     cols: usize,
@@ -135,20 +167,18 @@ impl alacritty_terminal::grid::Dimensions for BanquoDimensions {
     }
 }
 
-/// The thin wrapper around `alacritty_terminal::Term` that lives on the reader
-/// thread. Owns the terminal state behind a `FairMutex` (the reader and the
-/// snapshot builder are the same thread, so the mutex is held briefly; the UI
-/// thread never locks it — it reads the published `Arc<Snapshot>` instead).
-pub struct BanquoTerm {
-    term: Arc<FairMutex<Term<VoidListener>>>,
-    processor: Processor,
-}
-
 impl BanquoTerm {
-    /// Create a new terminal with the given initial dimensions.
-    pub fn new(cols: usize, rows: usize) -> Self {
+    /// Create a new terminal wrapper.
+    pub fn new(cols: usize, rows: usize, listener: BanquoListener) -> Self {
         let dims = BanquoDimensions { cols, rows };
-        let term = Term::new(TermConfig::default(), &dims, VoidListener);
+
+        let config = TermConfig::default();
+
+        let term = alacritty_terminal::term::Term::new(
+            config,
+            &dims,
+            listener,
+        );
         Self {
             term: Arc::new(FairMutex::new(term)),
             processor: Processor::new(),
@@ -285,9 +315,13 @@ mod tests {
 
     // --- T-104 integration tests: headless truth-half ---
 
+    fn dummy_listener() -> BanquoListener {
+        BanquoListener::new(std::sync::Arc::new(std::sync::Mutex::new(Box::new(std::io::sink()))))
+    }
+
     #[test]
     fn test_echoes_plain() {
-        let mut term = BanquoTerm::new(80, 24);
+        let mut term = BanquoTerm::new(80, 24, dummy_listener());
         term.advance(b"hi");
         let snap = term.build_snapshot();
         assert_eq!(snap.cell(0, 0).unwrap().ch, 'h');
@@ -296,7 +330,7 @@ mod tests {
 
     #[test]
     fn test_newline_advances_cursor() {
-        let mut term = BanquoTerm::new(80, 24);
+        let mut term = BanquoTerm::new(80, 24, dummy_listener());
         term.advance(b"a\r\nb");
         let snap = term.build_snapshot();
         assert_eq!(snap.cell(0, 1).unwrap().ch, 'b');
@@ -305,7 +339,7 @@ mod tests {
 
     #[test]
     fn test_sgr_red_fg() {
-        let mut term = BanquoTerm::new(80, 24);
+        let mut term = BanquoTerm::new(80, 24, dummy_listener());
         term.advance(b"\x1b[31mX");
         let snap = term.build_snapshot();
         let cell = snap.cell(0, 0).unwrap();
@@ -324,7 +358,7 @@ mod tests {
 
     #[test]
     fn test_clear_screen() {
-        let mut term = BanquoTerm::new(80, 24);
+        let mut term = BanquoTerm::new(80, 24, dummy_listener());
         term.advance(b"hello world");
         term.advance(b"\x1b[2J");
         let snap = term.build_snapshot();
@@ -336,7 +370,7 @@ mod tests {
 
     #[test]
     fn test_resize_reflows() {
-        let mut term = BanquoTerm::new(80, 24);
+        let mut term = BanquoTerm::new(80, 24, dummy_listener());
         term.resize(40, 10);
         let snap = term.build_snapshot();
         assert_eq!(snap.cols, 40);

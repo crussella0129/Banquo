@@ -25,7 +25,7 @@ pub const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
 const FLAT_FIELD: Color32 = Color32::from_rgba_premultiplied(16, 14, 19, 235);
 
 /// Default background (matches the flat field's RGB).
-const DEFAULT_BG: Color32 = Color32::from_rgb(16, 14, 19);
+const DEFAULT_BG: Color32 = Color32::from_rgb(0, 0, 0);
 
 /// Cursor color — a visible block.
 const CURSOR_COLOR: Color32 = Color32::from_rgba_premultiplied(235, 232, 226, 180);
@@ -286,7 +286,10 @@ impl App for BanquoApp {
             match event {
                 Event::Text(text) => {
                     let bytes = text.as_bytes();
-                    let _ = self.session.writer.write_all(bytes);
+                    if let Ok(mut writer) = self.session.writer.lock() {
+                        let _ = writer.write_all(bytes);
+                        let _ = writer.flush();
+                    }
                 }
                 Event::Key {
                     key,
@@ -316,7 +319,9 @@ impl App for BanquoApp {
 
                     if is_special || is_ctrl_letter {
                         if let Some(bytes) = encode_key(*key, *modifiers, "") {
-                            let _ = self.session.writer.write_all(&bytes);
+                            let mut writer = self.session.writer.lock().unwrap();
+                            let _ = writer.write_all(&bytes);
+                            let _ = writer.flush();
                         }
                     }
                 }

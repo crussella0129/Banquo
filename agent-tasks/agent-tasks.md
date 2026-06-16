@@ -9,14 +9,8 @@
 
 ## Future Direction (noted 2026-06-15; for any dev running sprint loops — see ADR-007/008/009)
 
-### Window chrome & controls — ADR-008 (per-OS component, not core)
-- [ ] Custom window-chrome COMPONENT: drag-to-move + resize handles + close
-      affordance, because frameless = no native chrome. On Windows the window
-      currently can't be mouse-dragged/closed (Alt+F4 works); this fixes it.
-- [ ] Make the component OVERRIDABLE/supersedable by DE/compositor-native window
-      controls (don't fight the WM on Wayland/macOS).
-- [ ] Close control = small stylized "×" / window-closing icon, top-right;
-      appears/disappears TOGETHER WITH the tabs.
+### Sprint 2: Window chrome & controls — ADR-008 (per-OS component, not core)
+<!-- T-200 through T-205 completed; see completed-tasks.md. -->
 
 ### Tabs — ADR-007 (REVISES design §VII "no tabs")
 - [ ] Terminal tabs that AUTO-COLLAPSE: tab strip + top-right close icon hidden

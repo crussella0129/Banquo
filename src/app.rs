@@ -141,11 +141,13 @@ pub struct BanquoApp {
     cell_metrics: Option<CellMetrics>,
     /// Last-sent grid size — only send a resize when this changes.
     last_grid_size: Option<(usize, usize)>,
+    /// Whether the app is using native OS decorations (true) or custom chrome (false).
+    native_decorations: bool,
 }
 
 impl BanquoApp {
     /// Construct the app with the session handle and install fonts.
-    pub fn new(cc: &CreationContext<'_>, session: SessionHandle) -> Self {
+    pub fn new(cc: &CreationContext<'_>, session: SessionHandle, native_decorations: bool) -> Self {
         let (defs, font_source) = build_fonts(EMBEDDED_IOSEVKA);
         cc.egui_ctx.set_fonts(defs);
         eprintln!("banquo: monospace face = {:?}", font_source);
@@ -154,6 +156,7 @@ impl BanquoApp {
             session,
             cell_metrics: None,
             last_grid_size: None,
+            native_decorations,
         }
     }
 
@@ -198,12 +201,79 @@ impl App for BanquoApp {
         // Flat field substrate.
         painter.rect_filled(rect, 0.0, FLAT_FIELD);
 
+        let mut content_rect = rect;
+
+        if !self.native_decorations {
+            let title_bar_height = 32.0;
+            let title_bar_rect = Rect::from_min_size(
+                rect.min,
+                Vec2::new(rect.width(), title_bar_height),
+            );
+
+            // Drag to move
+            let title_bar_response = ui.interact(title_bar_rect, ui.id().with("title_bar"), egui::Sense::click_and_drag());
+            if title_bar_response.dragged() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            }
+
+            // Close button (top right)
+            let close_button_size = 32.0;
+            let close_rect = Rect::from_min_size(
+                egui::pos2(rect.max.x - close_button_size, rect.min.y),
+                Vec2::new(close_button_size, close_button_size),
+            );
+            
+            let close_response = ui.interact(close_rect, ui.id().with("close_btn"), egui::Sense::click());
+            
+            // Draw close button (a simple X)
+            let cross_color = if close_response.hovered() {
+                Color32::WHITE
+            } else {
+                Color32::from_gray(128)
+            };
+            
+            let stroke = egui::Stroke::new(1.5, cross_color);
+            let p1 = close_rect.center() - Vec2::new(4.0, 4.0);
+            let p2 = close_rect.center() + Vec2::new(4.0, 4.0);
+            painter.line_segment([p1, p2], stroke);
+            let p3 = close_rect.center() - Vec2::new(4.0, -4.0);
+            let p4 = close_rect.center() + Vec2::new(4.0, -4.0);
+            painter.line_segment([p3, p4], stroke);
+
+            if close_response.clicked() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+
+            // Resize borders (invisible edges)
+            let border = 6.0;
+            let edges: [(egui::Align2, Vec2, egui::CursorIcon, egui::ViewportCommand); 4] = [
+                (egui::Align2::LEFT_TOP, Vec2::new(border, rect.height()), egui::CursorIcon::ResizeHorizontal, egui::ViewportCommand::BeginResize(egui::ResizeDirection::West)),
+                (egui::Align2::RIGHT_TOP, Vec2::new(border, rect.height()), egui::CursorIcon::ResizeHorizontal, egui::ViewportCommand::BeginResize(egui::ResizeDirection::East)),
+                (egui::Align2::LEFT_TOP, Vec2::new(rect.width(), border), egui::CursorIcon::ResizeVertical, egui::ViewportCommand::BeginResize(egui::ResizeDirection::North)),
+                (egui::Align2::LEFT_BOTTOM, Vec2::new(rect.width(), border), egui::CursorIcon::ResizeVertical, egui::ViewportCommand::BeginResize(egui::ResizeDirection::South)),
+            ];
+
+            for (align, size, cursor, cmd) in edges {
+                let edge_rect = align.align_size_within_rect(size, rect);
+                let edge_id = ui.id().with(format!("edge_{:?}", cmd));
+                let edge_response = ui.interact(edge_rect, edge_id, egui::Sense::click_and_drag());
+                if edge_response.hovered() || edge_response.dragged() {
+                    ctx.set_cursor_icon(cursor);
+                }
+                if edge_response.dragged() {
+                    ctx.send_viewport_cmd(cmd);
+                }
+            }
+
+            content_rect.min.y += title_bar_height;
+        }
+
         // Load the latest snapshot (lock-free, guarantee #2).
         let snapshot: Arc<Snapshot> = self.session.snapshot.load_full();
 
         if let Some(metrics) = self.cell_metrics {
             // Compute grid size and handle resize (T-110).
-            let (cols, rows) = metrics.grid_size(rect.width(), rect.height(), GRID_PADDING);
+            let (cols, rows) = metrics.grid_size(content_rect.width(), content_rect.height(), GRID_PADDING);
 
             if self.last_grid_size != Some((cols, rows)) {
                 self.session.resize(cols, rows);
@@ -212,9 +282,9 @@ impl App for BanquoApp {
 
             // Compute the centering offset (absorb slack into padding).
             let (offset_x, offset_y) =
-                metrics.centering_offset(rect.width(), rect.height(), GRID_PADDING, cols, rows);
-            let origin_x = rect.min.x + offset_x;
-            let origin_y = rect.min.y + offset_y;
+                metrics.centering_offset(content_rect.width(), content_rect.height(), GRID_PADDING, cols, rows);
+            let origin_x = content_rect.min.x + offset_x;
+            let origin_y = content_rect.min.y + offset_y;
 
             // Paint each cell (T-108).
             let paint_cols = cols.min(snapshot.cols);

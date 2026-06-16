@@ -48,6 +48,17 @@
 - **Files modified:** .github/workflows/ci.yml, agent-tasks/agent-tasks.md
 - **Commit:** `9b41d11`
 
+## Sprint 2 (Milestone 2 - Window Chrome)
+- `[x]` T-200: Implement OS-detection config flag in `main.rs` to set `ViewportBuilder::with_decorations` appropriately (true for Unix/macOS, false for Windows).
+- `[x]` T-201: Pass `decorations: bool` flag into `BanquoApp`'s state.
+- `[x]` T-202: If `!decorations`, render an invisible drag-to-move rect at the top of `BanquoApp::update` sending `ViewportCommand::StartDrag`.
+- `[x]` T-203: If `!decorations`, render a `×` close button at the top-right of the window sending `ViewportCommand::Close`.
+- `[x]` T-204: If `!decorations`, render invisible resize borders at the window edges sending `ViewportCommand::StartResize(ResizeDirection)`.
+- `[x]` T-205: Offset the terminal grid layout down by the height of the custom titlebar if `!decorations` so text isn't covered by the drag area.
+- **Completed:** 2026-06-16T05:01:00Z
+- **Files modified:** src/main.rs, src/app.rs, agent-tasks/agent-tasks.md
+- **Commit:** `2a7e1f2`
+
 ## T-101 through T-111 (sprint 1)
 - **Description:** Milestone 2 "It echoes" core implementation — PTY spawning, session reader thread, lock-free ArcSwap snapshot publishing, termVT adapter, metrics math, keystroke encoding, and grid rendering in the Face.
 - **Completed:** 2026-06-16T05:01:00Z

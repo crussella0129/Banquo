@@ -25,12 +25,16 @@ fn main() -> eframe::Result {
     // when the Face knows the actual panel dimensions).
     let session = core::session::spawn(80, 24).expect("failed to spawn terminal session");
 
+    // For Windows, we use a custom frameless window.
+    // For Unix/macOS, we default to native decorations so we don't fight the WM/compositor.
+    let native_decorations = !cfg!(target_os = "windows");
+
     let options = eframe::NativeOptions {
         renderer: eframe::Renderer::Wgpu,
         viewport: egui::ViewportBuilder::default()
             .with_title("Banquo")
             .with_transparent(true)
-            .with_decorations(false)
+            .with_decorations(native_decorations)
             .with_inner_size(INITIAL_SIZE)
             .with_min_inner_size([420.0, 180.0]),
         ..Default::default()
@@ -39,6 +43,6 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Banquo",
         options,
-        Box::new(|cc| Ok(Box::new(app::BanquoApp::new(cc, session)))),
+        Box::new(move |cc| Ok(Box::new(app::BanquoApp::new(cc, session, native_decorations)))),
     )
 }

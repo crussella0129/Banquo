@@ -77,3 +77,7 @@
 - **Completed:** 2026-06-16T05:02:00Z
 - **Files modified:** decisions.md, README.md, agent-tasks/agent-tasks.md
 - **Commit:** `pending`
+- [x] Update Milestones in README
+- [x] Update Section VII (Tabs) in README
+- [x] Add Auto-Snap Proportional Grid documentation
+- [x] Add Banquo Compose documentation

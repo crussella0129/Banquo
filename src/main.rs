@@ -11,6 +11,7 @@
 //! geometry contract between grid and Face.
 
 mod app;
+mod config;
 mod core;
 mod fonts;
 mod metrics;
@@ -40,9 +41,11 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
 
+    let config = config::BanquoConfig::load();
+
     eframe::run_native(
         "Banquo",
         options,
-        Box::new(move |cc| Ok(Box::new(app::BanquoApp::new(cc, session, native_decorations)))),
+        Box::new(move |cc| Ok(Box::new(app::BanquoApp::new(cc, session, native_decorations, config)))),
     )
 }

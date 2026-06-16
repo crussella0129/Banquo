@@ -12,6 +12,9 @@ publish = false
 # machine (the home directory may contain stray manifests). Members are added at
 # Milestone 2 when the truth/appearance seam becomes `banquo-core` + `banquo-face`.
 [workspace]
+members = [
+    "."
+]
 
 # Milestone 1 is a single binary crate. The truth/appearance seam (design §I/§IV)
 # is expressed as module boundaries (`app` = the Face, `fonts` = appearance) so it
@@ -45,6 +48,10 @@ portable-pty = "0.9"
 arc-swap = "1"
 # Convenient error handling for PTY/session spawn failures.
 anyhow = "1"
+# Config loading and deserialization (Sprint 4 Typography & Registry)
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+dirs = "5.0"
 
 [profile.release]
 opt-level = 3

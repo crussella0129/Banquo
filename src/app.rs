@@ -16,7 +16,7 @@ use std::time::{Instant, Duration};
 
 use crate::core::session::SessionHandle;
 use crate::core::snapshot::{Rgb, Snapshot};
-use crate::fonts::{build_fonts, FontSource, BANQUO_MONO, EMBEDDED_IOSEVKA};
+use crate::fonts::{build_fonts, FontSource, BANQUO_MONO};
 use crate::metrics::CellMetrics;
 
 /// The framebuffer clear color: fully transparent (M1 carry-forward).
@@ -149,12 +149,14 @@ pub struct BanquoApp {
     /// Tracking mouse for auto-collapse tabs.
     last_mouse_pos: Option<Pos2>,
     last_mouse_move_time: Instant,
+    /// The loaded configuration.
+    config: crate::config::BanquoConfig,
 }
 
 impl BanquoApp {
     /// Construct the app with the session handle and install fonts.
-    pub fn new(cc: &CreationContext<'_>, session: SessionHandle, native_decorations: bool) -> Self {
-        let (defs, font_source) = build_fonts(EMBEDDED_IOSEVKA);
+    pub fn new(cc: &CreationContext<'_>, session: SessionHandle, native_decorations: bool, config: crate::config::BanquoConfig) -> Self {
+        let (defs, font_source) = build_fonts(&config);
         cc.egui_ctx.set_fonts(defs);
         eprintln!("banquo: monospace face = {:?}", font_source);
         Self {
@@ -166,13 +168,14 @@ impl BanquoApp {
             native_decorations,
             last_mouse_pos: None,
             last_mouse_move_time: Instant::now(),
+            config,
         }
     }
 
     /// Which face backs the monospace family (guarantee #6).
     #[allow(dead_code)] // Exposed for honest reporting; not called in M2 render loop.
     pub fn font_source(&self) -> FontSource {
-        self.font_source
+        self.font_source.clone()
     }
 
     /// Lazily compute cell metrics from the egui font system. We do this on
@@ -390,15 +393,24 @@ impl App for BanquoApp {
             let paint_cols = cols.min(snapshot.cols);
             let paint_rows = rows.min(snapshot.rows);
 
+            let is_auto = self.config.grid.mode.as_deref() == Some("auto");
+
             for row in 0..paint_rows {
+                let mut current_x = origin_x;
                 for col in 0..paint_cols {
                     if let Some(cell) = snapshot.cell(col, row) {
-                        let x = origin_x + col as f32 * metrics.cell_w;
+                        let cell_w = if is_auto {
+                            let galley = painter.layout_no_wrap(cell.ch.to_string(), mono_font(), Color32::WHITE);
+                            galley.rect.width().max(1.0)
+                        } else {
+                            metrics.cell_w
+                        };
+                        let x = current_x;
                         let y = origin_y + row as f32 * metrics.cell_h;
 
                         let cell_rect = Rect::from_min_size(
                             egui::pos2(x, y),
-                            Vec2::new(metrics.cell_w, metrics.cell_h),
+                            Vec2::new(cell_w, metrics.cell_h),
                         );
 
                         // Background rect (only if non-default to reduce overdraw).
@@ -418,6 +430,8 @@ impl App for BanquoApp {
                                 fg,
                             );
                         }
+                        
+                        current_x += cell_w;
                     }
                 }
             }
@@ -427,25 +441,42 @@ impl App for BanquoApp {
                 && snapshot.cursor.col < paint_cols
                 && snapshot.cursor.row < paint_rows
             {
-                let cx = origin_x + snapshot.cursor.col as f32 * metrics.cell_w;
+                let mut cx = origin_x;
+                if is_auto {
+                    for col in 0..snapshot.cursor.col {
+                        let ch = snapshot.cell(col, snapshot.cursor.row).map(|c| c.ch).unwrap_or(' ');
+                        let galley = painter.layout_no_wrap(ch.to_string(), mono_font(), Color32::WHITE);
+                        cx += galley.rect.width().max(1.0);
+                    }
+                } else {
+                    cx += snapshot.cursor.col as f32 * metrics.cell_w;
+                }
+                
                 let cy = origin_y + snapshot.cursor.row as f32 * metrics.cell_h;
+                
+                let cursor_ch = snapshot.cell(snapshot.cursor.col, snapshot.cursor.row).map(|c| c.ch).unwrap_or(' ');
+                let cursor_w = if is_auto {
+                    let galley = painter.layout_no_wrap(cursor_ch.to_string(), mono_font(), Color32::WHITE);
+                    galley.rect.width().max(4.0) // minimum width for cursor on spaces
+                } else {
+                    metrics.cell_w
+                };
+                
                 let cursor_rect = Rect::from_min_size(
                     egui::pos2(cx, cy),
-                    Vec2::new(metrics.cell_w, metrics.cell_h),
+                    Vec2::new(cursor_w, metrics.cell_h),
                 );
                 painter.rect_filled(cursor_rect, 0.0, CURSOR_COLOR);
 
                 // Paint the character under the cursor in the inverse color.
-                if let Some(cell) = snapshot.cell(snapshot.cursor.col, snapshot.cursor.row) {
-                    if cell.ch != ' ' {
-                        painter.text(
-                            egui::pos2(cx, cy),
-                            egui::Align2::LEFT_TOP,
-                            cell.ch,
-                            mono_font(),
-                            DEFAULT_BG,
-                        );
-                    }
+                if cursor_ch != ' ' {
+                    painter.text(
+                        egui::pos2(cx, cy),
+                        egui::Align2::LEFT_TOP,
+                        cursor_ch,
+                        mono_font(),
+                        DEFAULT_BG,
+                    );
                 }
             }
         }

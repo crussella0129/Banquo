@@ -39,8 +39,8 @@ The milestone roadmap (design §VI):
 | # | Milestone | State |
 |---|-----------|-------|
 | 1 | Window + one Iosevka line | ✅ done |
-| 2 | It echoes — `alacritty_terminal` core, PTY, snapshot handoff (becomes a real terminal) | next |
-| 3 | Typography you'd brag about — metrics, `pixels_per_point`, wide/CJK, cursor, selection, scrollback | — |
+| 2 | It echoes — `alacritty_terminal` core, PTY, snapshot handoff (becomes a real terminal) | ✅ done |
+| 3 | Typography you'd brag about — metrics, `pixels_per_point`, wide/CJK, cursor, selection, scrollback | next |
 | 4 | The layer compositor — Blanco + Concrete | — |
 | 5 | Glass + the capability model — Zircon, 3-tier degradation | — |
 | 6 | Fire — Volcanic Glass via custom WGSL (`CallbackTrait`) | — |
@@ -52,10 +52,7 @@ The milestone roadmap (design §VI):
 cargo run
 ```
 
-A borderless window opens showing the typographic specimen on a flat field; the
-desktop reads faintly through the substrate (the window is transparency-capable —
-true Zircon glass is Milestone 5). Requires a working wgpu backend (D3D12/Vulkan/
-Metal). Startup prints which monospace face loaded (`Embedded` = Iosevka).
+A borderless window opens on a true PTY running your default shell (ConPTY on Windows, `openpty` on Unix). Type `ls`, `vim`, or `htop` — the parser + grid core handles full SGR colors, alt-screen, and cursor addressing. The window is transparency-capable (the desktop reads faintly through the flat field), but true Zircon glass arrives at Milestone 5.
 
 ```sh
 cargo test                              # pure unit tests (font pipeline, install latch)

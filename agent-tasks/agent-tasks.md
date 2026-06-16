@@ -5,8 +5,7 @@
 
 ## Sprint 1 (Milestone 2 — "It echoes")
 <!-- T-100 completed; see completed-tasks.md. -->
-<!-- T-101 through T-111 completed; see completed-tasks.md. -->
-- [ ] T-112: ADR-010 + README M2 update (`decisions.md`, `README.md`)
+<!-- All Sprint 1 tasks (T-100 through T-112) completed; see completed-tasks.md. -->
 
 ## Future Direction (noted 2026-06-15; for any dev running sprint loops — see ADR-007/008/009)
 

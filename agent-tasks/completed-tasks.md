@@ -53,3 +53,9 @@
 - **Completed:** 2026-06-16T05:01:00Z
 - **Files modified:** Cargo.toml, src/core/*.rs, src/metrics.rs, src/app.rs, src/main.rs, agent-tasks/agent-tasks.md
 - **Commit:** `1e3b0f0`
+
+## T-112 (sprint 1)
+- **Description:** Wrote ADR-010 documenting the three-actor lock-free handoff snapshot/threading model. Updated README milestone roadmap to mark Milestone 2 as complete and revised run instructions.
+- **Completed:** 2026-06-16T05:02:00Z
+- **Files modified:** decisions.md, README.md, agent-tasks/agent-tasks.md
+- **Commit:** `pending`

@@ -211,3 +211,18 @@ replaceable. Recorded now; first used at Milestone 2.
 **Consequences.** Faster, correct grid behavior; the adapter boundary is extra
 code but buys engine-swappability. If we ever forge our own parser, only the
 adapter changes.
+
+---
+
+## 2026-06-16 — ADR-010: Snapshot/Threading model (FairMutex + ArcSwap) — *Accepted* (sprint 1)
+
+**Context.** The truth-half (PTY parser/grid) and the appearance-half (the Face) operate at different cadences. The PTY stream can burst megabytes per second; the UI thread renders at 60-120fps. We must honor guarantee #2: "Core never blocks the frame". If the UI thread waits on a lock held by a busy parser, the window will freeze during heavy `cat` bursts.
+
+**Decision.** We decouple the two halves using a three-actor lock-free handoff:
+1. **Reader Thread:** A dedicated OS thread reads PTY bytes, advances the `BanquoTerm` (protected by a brief `FairMutex` to allow resize interruption), and builds an immutable `Snapshot`.
+2. **Publish (ArcSwap):** The reader thread atomically publishes the new snapshot via `arc_swap::ArcSwap::store`.
+3. **The Face:** The UI thread calls `ArcSwap::load_full` each frame to get an `Arc<Snapshot>` and paints it. It never locks the active grid.
+
+To prevent the reader thread from spending all its time building snapshots, we **coalesce read bursts**: it drains available bytes from the PTY, advances the state machine for all of them, and only publishes *one* snapshot at the end of the drain.
+
+**Consequences.** The UI thread always runs at maximum framerate regardless of PTY load; the grid is never rendered half-updated; heavy output falls behind visually but never freezes the app.

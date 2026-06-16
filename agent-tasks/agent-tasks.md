@@ -4,7 +4,7 @@
 (all Sprint 0 tasks complete)
 
 ## Sprint 1 (Milestone 2 — "It echoes")
-- [ ] T-100: GitHub Actions CI (`.github/workflows/ci.yml` — test + clippy + fmt on ubuntu + windows)
+<!-- T-100 completed; see completed-tasks.md. -->
 - [ ] T-101: Add alacritty_terminal, portable-pty, arc-swap deps (`Cargo.toml`)
 - [ ] T-102: Define Snapshot truth surface (`src/core/snapshot.rs`, `src/core/mod.rs`)
 - [ ] T-103: Color translation resolve_color (`src/core/term.rs`)

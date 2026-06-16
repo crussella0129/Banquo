@@ -1,128 +1,333 @@
-//! The Face (design §IV): the UI half that paints appearance.
+//! The Face (design §IV): the UI half that paints appearance from truth.
 //!
-//! At Milestone 1 there is no truth-half snapshot to read yet, so the Face paints
-//! a restrained two-line card: the hero tagline in **Geist** (display) above one
-//! **Iosevka** monospace line (the grid's voice). Two type roles, no clutter.
-//! The shape is already the design's: a pure function of (fonts, time) → pixels.
-//!
-//! Everything that decides *what* gets painted is factored into pure helpers and
-//! data, so the Face's choices are asserted headlessly (see the tests) — only the
-//! actual rasterization needs a window.
+//! At Milestone 2, the Face reads an immutable [`Snapshot`] published by the
+//! reader thread (via `ArcSwap`) and paints each cell's background and glyph
+//! in `banquo-mono` (Iosevka) at the cell's exact grid coordinate (guarantee
+//! #3). It captures keystrokes, encodes them as PTY bytes, and writes them to
+//! the PTY. On resize it computes new `(cols, rows)` via [`CellMetrics`] and
+//! drives `SessionHandle::resize`.
+
+use std::io::Write;
 
 use eframe::{App, CreationContext};
-use egui::{pos2, Align2, Color32, FontFamily, FontId};
+use egui::{Color32, Event, FontFamily, FontId, Key, Modifiers, Rect, Vec2};
+use std::sync::Arc;
 
+use crate::core::session::SessionHandle;
+use crate::core::snapshot::{Rgb, Snapshot};
 use crate::fonts::{build_fonts, FontSource, BANQUO_MONO, EMBEDDED_IOSEVKA};
+use crate::metrics::CellMetrics;
 
-/// The hero line — Banquo's promise (and the project's subtitle).
-const HERO: &str = "A Most Beautiful Terminal.";
-/// Hero size in logical points.
-const HERO_SIZE: f32 = 42.0;
-/// The Geist weight the hero is set in (light reads elegant at display size).
-const HERO_FAMILY: &str = "geist-light";
-
-/// The one monospace line — the terminal's own voice. Iosevka, fixed size: this
-/// is the face the grid will use, so it must be monospace (guarantee #3).
-const MONO_LINE: &str = "user@banquo:~$  cargo run   # the grid speaks Iosevka";
-/// Mono line size in logical points. Font size is a *setting*, not a function of
-/// window size (guarantee #4) — hence a constant.
-const MONO_SIZE: f32 = 16.0;
-
-/// The framebuffer clear color: fully transparent. The window is genuinely
-/// transparency-capable (the user's M1 instruction); the visible substrate is the
-/// flat field painted on top, not the clear. Keeping clear at zero-alpha while the
-/// field is near-opaque is what makes M1 transparency-capable without committing
-/// to Zircon's full glass (design §V, Milestone 5).
+/// The framebuffer clear color: fully transparent (M1 carry-forward).
 pub const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
 
-/// The flat field (Layer 0/1 of §V, collapsed for M1): a warm near-black tint at
-/// ~0.92 alpha. Near-opaque so glyph antialiasing has a stable backing (dodging
-/// the over-transparency muddiness the design flags for Zircon, §V), yet
-/// translucent enough that the desktop reads faintly through it.
+/// The flat field (Layer 0/1 of §V, collapsed for M2): warm near-black tint.
 const FLAT_FIELD: Color32 = Color32::from_rgba_premultiplied(16, 14, 19, 235);
 
-/// Warm off-white glyphs — a hair off pure white so the contrast doesn't ring
-/// (the §V Blanco reasoning, applied to text here).
-const GLYPH: Color32 = Color32::from_rgb(235, 232, 226);
+/// Default background (matches the flat field's RGB).
+const DEFAULT_BG: Color32 = Color32::from_rgb(16, 14, 19);
 
-/// Dimmer ink for the secondary monospace line.
-const GLYPH_DIM: Color32 = Color32::from_rgb(150, 150, 158);
+/// Cursor color — a visible block.
+const CURSOR_COLOR: Color32 = Color32::from_rgba_premultiplied(235, 232, 226, 180);
 
-/// The hero font: Geist at display size. Pure, so "the hero is Geist, not the
-/// default font" is a test rather than an eyeball check.
-fn hero_font() -> FontId {
-    FontId::new(HERO_SIZE, FontFamily::Name(HERO_FAMILY.into()))
+/// Grid padding in logical pixels.
+const GRID_PADDING: f32 = 4.0;
+
+/// The fixed font size for the terminal grid (guarantee #4: font size is a
+/// setting, not a function of window size).
+const MONO_SIZE: f32 = 16.0;
+
+/// Convert a Banquo [`Rgb`] to an egui [`Color32`].
+fn rgb_to_color32(rgb: Rgb) -> Color32 {
+    Color32::from_rgb(rgb.r, rgb.g, rgb.b)
 }
 
-/// The monospace line's font: Iosevka (`banquo-mono`) at the fixed size.
+/// The monospace font for the grid.
 fn mono_font() -> FontId {
     FontId::new(MONO_SIZE, FontFamily::Name(BANQUO_MONO.into()))
 }
 
-/// Banquo's application state for Milestone 1.
+// ---------------------------------------------------------------------------
+// Keystroke encoding (T-109)
+// ---------------------------------------------------------------------------
+
+/// Encode an egui key event into PTY bytes.
+///
+/// Pure function — no side effects. Returns `Some(bytes)` for recognized keys,
+/// `None` for unhandled keys. Handles printable text, control sequences
+/// (Enter, Backspace, Tab, Esc, arrows), and Ctrl-letter combinations.
+pub fn encode_key(key: Key, modifiers: Modifiers, text: &str) -> Option<Vec<u8>> {
+    // Ctrl-letter combinations
+    if modifiers.ctrl && !modifiers.alt {
+        if let Some(ch) = key_to_letter(key) {
+            let ctrl_byte = (ch.to_ascii_uppercase() as u8)
+                .wrapping_sub(b'A')
+                .wrapping_add(1);
+            return Some(vec![ctrl_byte]);
+        }
+    }
+
+    // Special keys (no modifier requirement)
+    match key {
+        Key::Enter => return Some(b"\r".to_vec()),
+        Key::Backspace => return Some(vec![0x7f]),
+        Key::Tab => return Some(b"\t".to_vec()),
+        Key::Escape => return Some(vec![0x1b]),
+        Key::ArrowUp => return Some(b"\x1b[A".to_vec()),
+        Key::ArrowDown => return Some(b"\x1b[B".to_vec()),
+        Key::ArrowRight => return Some(b"\x1b[C".to_vec()),
+        Key::ArrowLeft => return Some(b"\x1b[D".to_vec()),
+        Key::Home => return Some(b"\x1b[H".to_vec()),
+        Key::End => return Some(b"\x1b[F".to_vec()),
+        Key::Delete => return Some(b"\x1b[3~".to_vec()),
+        Key::PageUp => return Some(b"\x1b[5~".to_vec()),
+        Key::PageDown => return Some(b"\x1b[6~".to_vec()),
+        _ => {}
+    }
+
+    // Printable text (not ctrl-modified)
+    if !text.is_empty() && !modifiers.ctrl {
+        return Some(text.as_bytes().to_vec());
+    }
+
+    None
+}
+
+/// Map an egui Key to its letter character (for Ctrl-letter encoding).
+fn key_to_letter(key: Key) -> Option<char> {
+    match key {
+        Key::A => Some('A'),
+        Key::B => Some('B'),
+        Key::C => Some('C'),
+        Key::D => Some('D'),
+        Key::E => Some('E'),
+        Key::F => Some('F'),
+        Key::G => Some('G'),
+        Key::H => Some('H'),
+        Key::I => Some('I'),
+        Key::J => Some('J'),
+        Key::K => Some('K'),
+        Key::L => Some('L'),
+        Key::M => Some('M'),
+        Key::N => Some('N'),
+        Key::O => Some('O'),
+        Key::P => Some('P'),
+        Key::Q => Some('Q'),
+        Key::R => Some('R'),
+        Key::S => Some('S'),
+        Key::T => Some('T'),
+        Key::U => Some('U'),
+        Key::V => Some('V'),
+        Key::W => Some('W'),
+        Key::X => Some('X'),
+        Key::Y => Some('Y'),
+        Key::Z => Some('Z'),
+        _ => None,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// BanquoApp (T-108, T-110)
+// ---------------------------------------------------------------------------
+
+/// Banquo's application state for Milestone 2.
 pub struct BanquoApp {
-    /// Which face actually backs [`BANQUO_MONO`] — reportable per guarantee #6.
+    /// Which face backs the monospace family (guarantee #6).
+    #[allow(dead_code)] // Exposed for honest reporting; used at startup.
     font_source: FontSource,
+    /// The terminal session handle (snapshot reader, PTY writer, resize).
+    session: SessionHandle,
+    /// Cell metrics derived from the monospace font.
+    cell_metrics: Option<CellMetrics>,
+    /// Last-sent grid size — only send a resize when this changes.
+    last_grid_size: Option<(usize, usize)>,
 }
 
 impl BanquoApp {
-    /// Construct the app and install the fonts **up front**, before the first
-    /// frame.
-    ///
-    /// Fonts must be set here (via `cc.egui_ctx`), not on the first frame:
-    /// `Context::set_fonts` only takes effect at the *next* frame's font-atlas
-    /// rebuild, so installing it during the first `ui` pass would paint a family
-    /// before it is bound and panic ("not bound to any fonts"). Installing in
-    /// `new` means every family is resolvable by the time anything paints — and it
-    /// happens exactly once by construction.
-    pub fn new(cc: &CreationContext<'_>) -> Self {
+    /// Construct the app with the session handle and install fonts.
+    pub fn new(cc: &CreationContext<'_>, session: SessionHandle) -> Self {
         let (defs, font_source) = build_fonts(EMBEDDED_IOSEVKA);
         cc.egui_ctx.set_fonts(defs);
-        let app = Self { font_source };
-        // Honest report of which face actually backs the monospace family
-        // (guarantee #6) — local stderr, once, no telemetry.
-        eprintln!("banquo: monospace face = {:?}", app.font_source());
-        app
+        eprintln!("banquo: monospace face = {:?}", font_source);
+        Self {
+            font_source,
+            session,
+            cell_metrics: None,
+            last_grid_size: None,
+        }
     }
 
-    /// Which face backs the monospace family (Iosevka when embedded, the built-in
-    /// monospace on fallback). Exposed for honest reporting (guarantee #6).
+    /// Which face backs the monospace family (guarantee #6).
+    #[allow(dead_code)] // Exposed for honest reporting; not called in M2 render loop.
     pub fn font_source(&self) -> FontSource {
         self.font_source
+    }
+
+    /// Lazily compute cell metrics from the egui font system. We do this on
+    /// the first frame because font metrics aren't available until after
+    /// `set_fonts` + one layout pass.
+    fn ensure_metrics(&mut self, ctx: &egui::Context) {
+        if self.cell_metrics.is_some() {
+            return;
+        }
+
+        let font = mono_font();
+        ctx.fonts_mut(|fonts| {
+            let layout = fonts.layout_no_wrap("M".to_string(), font.clone(), Color32::WHITE);
+            if !layout.rows.is_empty() {
+                let cell_w = layout.rect.width();
+                let cell_h = layout.rows[0].height();
+                if cell_w > 0.0 && cell_h > 0.0 {
+                    self.cell_metrics = Some(CellMetrics::new(cell_w, cell_h));
+                }
+            }
+        });
     }
 }
 
 impl App for BanquoApp {
-    /// Paint pass. eframe hands us a margin-less, background-less `Ui` spanning
-    /// the root viewport — this *is* the central area. We fill the flat field and
-    /// paint the specimen as a centered vertical stack.
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+
+        // Ensure we have cell metrics.
+        self.ensure_metrics(&ctx);
+
         let rect = ui.max_rect();
         let painter = ui.painter();
-        // Flat field (the M1 substrate): a single filled rect over the whole area.
+
+        // Flat field substrate.
         painter.rect_filled(rect, 0.0, FLAT_FIELD);
 
-        // Two centered lines: hero just above the midline, the mono line just
-        // below it — balanced, uncluttered.
-        let cx = rect.center().x;
-        let cy = rect.center().y;
-        painter.text(
-            pos2(cx, cy - 16.0),
-            Align2::CENTER_BOTTOM,
-            HERO,
-            hero_font(),
-            GLYPH,
-        );
-        painter.text(
-            pos2(cx, cy + 18.0),
-            Align2::CENTER_TOP,
-            MONO_LINE,
-            mono_font(),
-            GLYPH_DIM,
-        );
+        // Load the latest snapshot (lock-free, guarantee #2).
+        let snapshot: Arc<Snapshot> = self.session.snapshot.load_full();
+
+        if let Some(metrics) = self.cell_metrics {
+            // Compute grid size and handle resize (T-110).
+            let (cols, rows) = metrics.grid_size(rect.width(), rect.height(), GRID_PADDING);
+
+            if self.last_grid_size != Some((cols, rows)) {
+                self.session.resize(cols, rows);
+                self.last_grid_size = Some((cols, rows));
+            }
+
+            // Compute the centering offset (absorb slack into padding).
+            let (offset_x, offset_y) =
+                metrics.centering_offset(rect.width(), rect.height(), GRID_PADDING, cols, rows);
+            let origin_x = rect.min.x + offset_x;
+            let origin_y = rect.min.y + offset_y;
+
+            // Paint each cell (T-108).
+            let paint_cols = cols.min(snapshot.cols);
+            let paint_rows = rows.min(snapshot.rows);
+
+            for row in 0..paint_rows {
+                for col in 0..paint_cols {
+                    if let Some(cell) = snapshot.cell(col, row) {
+                        let x = origin_x + col as f32 * metrics.cell_w;
+                        let y = origin_y + row as f32 * metrics.cell_h;
+
+                        let cell_rect = Rect::from_min_size(
+                            egui::pos2(x, y),
+                            Vec2::new(metrics.cell_w, metrics.cell_h),
+                        );
+
+                        // Background rect (only if non-default to reduce overdraw).
+                        let bg = rgb_to_color32(cell.bg);
+                        if bg != DEFAULT_BG {
+                            painter.rect_filled(cell_rect, 0.0, bg);
+                        }
+
+                        // Glyph (skip spaces for performance).
+                        if cell.ch != ' ' {
+                            let fg = rgb_to_color32(cell.fg);
+                            painter.text(
+                                egui::pos2(x, y),
+                                egui::Align2::LEFT_TOP,
+                                cell.ch,
+                                mono_font(),
+                                fg,
+                            );
+                        }
+                    }
+                }
+            }
+
+            // Cursor block (T-108).
+            if snapshot.cursor_visible
+                && snapshot.cursor.col < paint_cols
+                && snapshot.cursor.row < paint_rows
+            {
+                let cx = origin_x + snapshot.cursor.col as f32 * metrics.cell_w;
+                let cy = origin_y + snapshot.cursor.row as f32 * metrics.cell_h;
+                let cursor_rect = Rect::from_min_size(
+                    egui::pos2(cx, cy),
+                    Vec2::new(metrics.cell_w, metrics.cell_h),
+                );
+                painter.rect_filled(cursor_rect, 0.0, CURSOR_COLOR);
+
+                // Paint the character under the cursor in the inverse color.
+                if let Some(cell) = snapshot.cell(snapshot.cursor.col, snapshot.cursor.row) {
+                    if cell.ch != ' ' {
+                        painter.text(
+                            egui::pos2(cx, cy),
+                            egui::Align2::LEFT_TOP,
+                            cell.ch,
+                            mono_font(),
+                            DEFAULT_BG,
+                        );
+                    }
+                }
+            }
+        }
+
+        // Process input events (T-109).
+        let events: Vec<Event> = ctx.input(|i| i.events.clone());
+        for event in &events {
+            match event {
+                Event::Text(text) => {
+                    let bytes = text.as_bytes();
+                    let _ = self.session.writer.write_all(bytes);
+                }
+                Event::Key {
+                    key,
+                    pressed: true,
+                    modifiers,
+                    ..
+                } => {
+                    // Don't double-send printable text that was already handled
+                    // by Event::Text. Only encode special/control keys here.
+                    let is_special = matches!(
+                        key,
+                        Key::Enter
+                            | Key::Backspace
+                            | Key::Tab
+                            | Key::Escape
+                            | Key::ArrowUp
+                            | Key::ArrowDown
+                            | Key::ArrowLeft
+                            | Key::ArrowRight
+                            | Key::Home
+                            | Key::End
+                            | Key::Delete
+                            | Key::PageUp
+                            | Key::PageDown
+                    );
+                    let is_ctrl_letter = modifiers.ctrl && key_to_letter(*key).is_some();
+
+                    if is_special || is_ctrl_letter {
+                        if let Some(bytes) = encode_key(*key, *modifiers, "") {
+                            let _ = self.session.writer.write_all(&bytes);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Keep frames flowing while the terminal is active.
+        ctx.request_repaint();
     }
 
-    /// Fully transparent clear (see [`CLEAR_COLOR`]).
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         CLEAR_COLOR
     }
@@ -132,38 +337,115 @@ impl App for BanquoApp {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_hero_is_the_tagline() {
-        assert_eq!(HERO, "A Most Beautiful Terminal.");
-    }
+    // --- T-109 unit tests: keystroke encoding ---
 
     #[test]
-    fn test_hero_uses_geist() {
+    fn test_encode_printable() {
         assert_eq!(
-            hero_font().family,
-            FontFamily::Name(HERO_FAMILY.into()),
-            "the hero must be set in a Geist display family"
+            encode_key(Key::A, Modifiers::NONE, "a"),
+            Some(b"a".to_vec())
         );
-        assert!(
-            HERO_FAMILY.starts_with("geist-"),
-            "the hero family must be a Geist weight"
+        // Multibyte UTF-8
+        assert_eq!(
+            encode_key(Key::A, Modifiers::NONE, "é"),
+            Some("é".as_bytes().to_vec())
         );
     }
 
     #[test]
-    fn test_mono_line_uses_iosevka() {
+    fn test_encode_enter_backspace_tab_esc() {
         assert_eq!(
-            mono_font().family,
-            FontFamily::Name(BANQUO_MONO.into()),
-            "the terminal line must be painted in the monospace family (guarantee #3)"
+            encode_key(Key::Enter, Modifiers::NONE, ""),
+            Some(b"\r".to_vec())
+        );
+        assert_eq!(
+            encode_key(Key::Backspace, Modifiers::NONE, ""),
+            Some(vec![0x7f])
+        );
+        assert_eq!(
+            encode_key(Key::Tab, Modifiers::NONE, ""),
+            Some(b"\t".to_vec())
+        );
+        assert_eq!(
+            encode_key(Key::Escape, Modifiers::NONE, ""),
+            Some(vec![0x1b])
         );
     }
+
+    #[test]
+    fn test_encode_arrows() {
+        assert_eq!(
+            encode_key(Key::ArrowUp, Modifiers::NONE, ""),
+            Some(b"\x1b[A".to_vec())
+        );
+        assert_eq!(
+            encode_key(Key::ArrowDown, Modifiers::NONE, ""),
+            Some(b"\x1b[B".to_vec())
+        );
+        assert_eq!(
+            encode_key(Key::ArrowRight, Modifiers::NONE, ""),
+            Some(b"\x1b[C".to_vec())
+        );
+        assert_eq!(
+            encode_key(Key::ArrowLeft, Modifiers::NONE, ""),
+            Some(b"\x1b[D".to_vec())
+        );
+    }
+
+    #[test]
+    fn test_encode_ctrl_c() {
+        assert_eq!(
+            encode_key(
+                Key::C,
+                Modifiers {
+                    ctrl: true,
+                    ..Default::default()
+                },
+                ""
+            ),
+            Some(vec![0x03])
+        );
+    }
+
+    #[test]
+    fn test_encode_ctrl_letter() {
+        // Ctrl-A = 0x01
+        assert_eq!(
+            encode_key(
+                Key::A,
+                Modifiers {
+                    ctrl: true,
+                    ..Default::default()
+                },
+                ""
+            ),
+            Some(vec![0x01])
+        );
+        // Ctrl-Z = 0x1a
+        assert_eq!(
+            encode_key(
+                Key::Z,
+                Modifiers {
+                    ctrl: true,
+                    ..Default::default()
+                },
+                ""
+            ),
+            Some(vec![0x1a])
+        );
+    }
+
+    #[test]
+    fn test_encode_unhandled_none() {
+        // F-keys with no text = unhandled
+        assert_eq!(encode_key(Key::F1, Modifiers::NONE, ""), None);
+    }
+
+    // --- Transparency invariant (carry-forward from M1) ---
 
     #[test]
     fn test_transparency_invariants() {
-        // The clear is fully transparent (window is transparency-capable)...
         assert_eq!(CLEAR_COLOR, [0.0, 0.0, 0.0, 0.0]);
-        // ...while the flat field is near-opaque so AA has a stable backing.
         assert!(
             FLAT_FIELD.a() >= 230,
             "flat field must be near-opaque (alpha {} of 255)",

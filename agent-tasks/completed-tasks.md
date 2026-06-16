@@ -41,3 +41,9 @@
 - **Completed:** 2026-06-15T05:35:00Z
 - **Files modified:** README.md, agent-tasks/
 - **Commit:** `782ef09` (this entry's hash back-filled in a follow-up housekeeping commit)
+
+## T-100 (sprint 1)
+- **Description:** GitHub Actions CI workflow — cargo test + clippy + fmt on ubuntu-latest + windows-latest, triggered on push/PR to main.
+- **Completed:** 2026-06-16T04:51:00Z
+- **Files modified:** .github/workflows/ci.yml, agent-tasks/agent-tasks.md
+- **Commit:** `9b41d11`

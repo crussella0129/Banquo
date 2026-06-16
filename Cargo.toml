@@ -32,6 +32,20 @@ eframe = { version = "0.34", default-features = false, features = [
 # eframe resolves to keep a single egui in the tree.
 egui = "0.34"
 
+# --- Milestone 2: "It echoes" ---
+# The truth-half core: a safe-Rust VT parser + grid engine (ADR-004). Banquo wraps
+# it behind its own Snapshot/Cell types so no alacritty_* type leaks downstream.
+alacritty_terminal = "0.26"
+# Cross-platform PTY: Unix openpty/forkpty, Windows ConPTY, macOS — behind one
+# trait. The same abstraction WezTerm ships (design §VIII).
+portable-pty = "0.9"
+# Lock-free publish for the snapshot handoff (design §IV): the reader thread
+# builds the next Snapshot and atomically swaps the Arc pointer; the Face always
+# reads a complete, consistent frame — never a half-updated grid.
+arc-swap = "1"
+# Convenient error handling for PTY/session spawn failures.
+anyhow = "1"
+
 [profile.release]
 opt-level = 3
 lto = "thin"

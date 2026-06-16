@@ -9,6 +9,12 @@
 
 ## Future Direction (noted 2026-06-15; for any dev running sprint loops — see ADR-007/008/009)
 
+### Config & Ricing (TOML)
+- [ ] Add support for TOML-based configurations to define themes, typefaces, textures, blur, and other effects.
+- [ ] Make tab appearance configurable (rounded corners, beveled edges, colors) in the TOML file to let them 'pop'.
+- [ ] Allow users to load external themes and configuration files to achieve "ricing" akin to what's possible on DEs like Hyprland.
+- [ ] Implement "blur" to the window/tab transparency effects (which can be toggled on or off via the TOML config).
+
 ### Sprint 2: Window chrome & controls — ADR-008 (per-OS component, not core)
 <!-- T-200 through T-205 completed; see completed-tasks.md. -->
 

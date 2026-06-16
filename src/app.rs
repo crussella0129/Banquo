@@ -240,8 +240,8 @@ impl App for BanquoApp {
                 .fixed_pos(rect.min)
                 .order(egui::Order::Foreground)
                 .show(&ctx, |ui| {
-                    // Paint background for tabs area
-                    ui.painter().rect_filled(title_bar_rect, 0.0, Color32::from_rgba_premultiplied(30, 28, 35, 250)); // Slightly lighter/opaque than FLAT_FIELD
+                    // Paint background for tabs area with more transparency
+                    ui.painter().rect_filled(title_bar_rect, 0.0, Color32::from_rgba_unmultiplied(30, 28, 35, 160));
 
                     if !self.native_decorations {
                         // Drag to move
@@ -301,7 +301,7 @@ impl App for BanquoApp {
                         } else if tab_resp.hovered() {
                             Color32::from_rgba_premultiplied(50, 50, 60, 255)
                         } else {
-                            Color32::TRANSPARENT
+                            Color32::from_rgba_unmultiplied(40, 40, 65, 90)
                         };
                         
                         ui.painter().rect_filled(tab_rect, 4.0, bg_color);
@@ -310,7 +310,7 @@ impl App for BanquoApp {
                             tab_rect.center(),
                             egui::Align2::CENTER_CENTER,
                             format!("Tab {}", i + 1),
-                            FontId::proportional(14.0),
+                            FontId::new(14.0, FontFamily::Name(crate::fonts::BANQUO_MONO.into())),
                             if i == self.active_tab { Color32::WHITE } else { Color32::GRAY },
                         );
                         
@@ -336,7 +336,7 @@ impl App for BanquoApp {
                         add_rect.center(),
                         egui::Align2::CENTER_CENTER,
                         "+",
-                        FontId::proportional(16.0),
+                        FontId::new(16.0, FontFamily::Name(crate::fonts::BANQUO_MONO.into())),
                         if add_resp.hovered() { Color32::WHITE } else { Color32::GRAY },
                     );
                 });

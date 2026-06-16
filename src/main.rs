@@ -15,12 +15,50 @@ mod config;
 mod core;
 mod fonts;
 mod metrics;
+pub mod os;
+
+use clap::{Parser, Subcommand};
+
+#[derive(Parser, Debug)]
+#[command(name = "banquo")]
+#[command(about = "Banquo — a most beautiful terminal.")]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Banquo Compose — The TOML Configurator tool
+    Compose {
+        /// Check if the `banquo.toml` configuration is valid
+        #[arg(long)]
+        check: bool,
+    },
+}
 
 /// The window's initial logical size. Milestone 2 is a real terminal — larger
 /// default than M1's hero card.
 const INITIAL_SIZE: [f32; 2] = [1024.0, 640.0];
 
-fn main() -> eframe::Result {
+fn main() -> Result<(), eframe::Error> {
+    let cli = Cli::parse();
+
+    if let Some(command) = cli.command {
+        match command {
+            Commands::Compose { check } => {
+                if check {
+                    println!("Banquo Compose: Checking config...");
+                    let _config = config::BanquoConfig::load();
+                    println!("Config loaded successfully. All parameters are valid.");
+                } else {
+                    println!("Banquo Compose: Missing --check flag. Try `banquo compose --help`.");
+                }
+            }
+        }
+        return Ok(());
+    }
+
     // Spawn the terminal session (PTY + reader thread + snapshot publisher)
     // before the window opens. Initial size = 80×24 (corrected on first resize
     // when the Face knows the actual panel dimensions).

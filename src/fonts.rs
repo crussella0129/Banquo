@@ -94,9 +94,31 @@ fn load_font(
             family_name.to_owned(),
             Arc::new(FontData::from_owned(bytes)),
         );
+        let mut fallbacks = vec![family_name.to_owned()];
+        
+        // Ensure default fallbacks are preserved so that emojis and symbols render
+        // properly if the user-selected font lacks them!
+        if is_monospace {
+            if let Some(default_mono) = defs.families.get(&FontFamily::Monospace) {
+                for f in default_mono {
+                    if f != family_name {
+                        fallbacks.push(f.clone());
+                    }
+                }
+            }
+        } else {
+            if let Some(default_prop) = defs.families.get(&FontFamily::Proportional) {
+                for f in default_prop {
+                    if f != family_name {
+                        fallbacks.push(f.clone());
+                    }
+                }
+            }
+        }
+
         defs.families.insert(
             FontFamily::Name(family_name.into()),
-            vec![family_name.to_owned()],
+            fallbacks,
         );
         if is_monospace {
             // Promote to lead the default Monospace family

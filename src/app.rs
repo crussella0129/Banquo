@@ -23,7 +23,7 @@ use crate::metrics::CellMetrics;
 pub const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
 
 /// The flat field (Layer 0/1 of §V, collapsed for M2): warm near-black tint.
-const FLAT_FIELD: Color32 = Color32::from_rgba_premultiplied(16, 14, 19, 235);
+const FLAT_FIELD: Color32 = Color32::from_rgba_premultiplied(16, 14, 19, 180);
 
 /// Default background (matches the flat field's RGB).
 const DEFAULT_BG: Color32 = Color32::from_rgb(0, 0, 0);
@@ -435,6 +435,9 @@ impl App for BanquoApp {
                     }
                 }
             }
+
+            // Apply window blur once if enabled
+            crate::os::apply_window_effects(&self.config, _frame);
 
             // Cursor block (T-108).
             if snapshot.cursor_visible

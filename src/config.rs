@@ -8,6 +8,8 @@ pub struct BanquoConfig {
     pub fonts: FontConfig,
     #[serde(default)]
     pub grid: GridConfig,
+    #[serde(default)]
+    pub os: OsConfig,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -20,6 +22,27 @@ pub struct FontConfig {
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct GridConfig {
     pub mode: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct OsConfig {
+    pub windows: Option<WindowsConfig>,
+    pub macos: Option<MacosConfig>,
+    pub linux: Option<LinuxConfig>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct WindowsConfig {
+    pub blur: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct MacosConfig {
+    pub vibrancy: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct LinuxConfig {
 }
 
 impl BanquoConfig {

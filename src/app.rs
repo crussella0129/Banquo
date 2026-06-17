@@ -316,17 +316,18 @@ impl App for BanquoApp {
         };
 
         if edge_style == "rounded" {
-            stroke_rect(rect, egui::Stroke::new(1.0, Color32::from_white_alpha(40)));
+            stroke_rect(rect, egui::Stroke::new(1.0, Color32::from_black_alpha(150)));
         } else if edge_style == "beveled" {
-            // Top and left highlight
-            let inset_rect = rect.shrink(1.0);
-            stroke_rect(rect, egui::Stroke::new(1.0, Color32::from_white_alpha(60)));
-            stroke_rect(inset_rect, egui::Stroke::new(1.0, Color32::from_black_alpha(150)));
+            // Dark outer border (contrasts with light desktops)
+            stroke_rect(rect, egui::Stroke::new(1.5, Color32::from_black_alpha(200)));
+            // Light inner border (creates bevel pop against dark app background)
+            let inset_rect = rect.shrink(1.5);
+            stroke_rect(inset_rect, egui::Stroke::new(1.5, Color32::from_white_alpha(50)));
         } else if edge_style == "3d" {
             // Chunky CRT bezel effect
-            stroke_rect(rect, egui::Stroke::new(2.0, Color32::from_white_alpha(30)));
-            stroke_rect(rect.shrink(2.0), egui::Stroke::new(4.0, Color32::from_black_alpha(120)));
-            stroke_rect(rect.shrink(6.0), egui::Stroke::new(1.0, Color32::from_white_alpha(20)));
+            stroke_rect(rect, egui::Stroke::new(2.0, Color32::from_black_alpha(220)));
+            stroke_rect(rect.shrink(2.0), egui::Stroke::new(3.0, Color32::from_black_alpha(100)));
+            stroke_rect(rect.shrink(5.0), egui::Stroke::new(1.5, Color32::from_white_alpha(50)));
         }
 
         // --- IDLE DETECTION ---

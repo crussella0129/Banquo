@@ -198,8 +198,49 @@ impl BanquoApp {
             }
         });
     }
-}
 
+    fn get_squircle_path(rect: egui::Rect, radius: f32, corner_style: &str, top_only: bool) -> Vec<egui::Pos2> {
+        let n = if corner_style == "g2" { 3.5 } else { 5.0 };
+        let steps = 16;
+        let mut points = Vec::with_capacity(steps * 4);
+
+        let r = radius.min(rect.width() / 2.0).min(rect.height() / 2.0);
+        
+        let mut quadrant = Vec::with_capacity(steps + 1);
+        for i in 0..=steps {
+            let t = (i as f32 / steps as f32) * std::f32::consts::FRAC_PI_2;
+            let x = t.cos().powf(2.0 / n);
+            let y = t.sin().powf(2.0 / n);
+            quadrant.push(egui::vec2(x, y));
+        }
+
+        // Top-Left
+        for v in &quadrant {
+            points.push(egui::pos2(rect.min.x + r - r * v.x, rect.min.y + r - r * v.y));
+        }
+
+        // Top-Right
+        for v in &quadrant {
+            points.push(egui::pos2(rect.max.x - r + r * v.y, rect.min.y + r - r * v.x));
+        }
+
+        if top_only {
+            points.push(egui::pos2(rect.max.x, rect.max.y));
+            points.push(egui::pos2(rect.min.x, rect.max.y));
+        } else {
+            // Bottom-Right
+            for v in &quadrant {
+                points.push(egui::pos2(rect.max.x - r + r * v.x, rect.max.y - r + r * v.y));
+            }
+
+            // Bottom-Left
+            for v in &quadrant {
+                points.push(egui::pos2(rect.min.x + r - r * v.y, rect.max.y - r + r * v.x));
+            }
+        }
+        points
+    }
+}
 impl App for BanquoApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
@@ -231,49 +272,8 @@ impl App for BanquoApp {
             let rounding = egui::CornerRadius::same(radius as u8);
             painter.rect_filled(rect, rounding, FLAT_FIELD);
         } else {
-            // G2 or G3: Superellipse corners
-            let n = if corner_style == "g2" { 3.5 } else { 5.0 };
-            let steps = 16;
-            let mut points = Vec::with_capacity(steps * 4);
-
-            let r = radius.min(rect.width() / 2.0).min(rect.height() / 2.0);
-
-            // Top-Right
-            let tr_center = egui::pos2(rect.max.x - r, rect.min.y + r);
-            for i in 0..=steps {
-                let t = (i as f32 / steps as f32) * std::f32::consts::FRAC_PI_2;
-                let dx = r * t.cos().powf(2.0 / n);
-                let dy = r * t.sin().powf(2.0 / n);
-                points.push(egui::pos2(tr_center.x + dx, tr_center.y - dy));
-            }
-            // Top-Left
-            let tl_center = egui::pos2(rect.min.x + r, rect.min.y + r);
-            for i in 0..=steps {
-                let t = (i as f32 / steps as f32) * std::f32::consts::FRAC_PI_2;
-                let t = t + std::f32::consts::FRAC_PI_2;
-                let dx = r * t.cos().abs().powf(2.0 / n) * t.cos().signum();
-                let dy = r * t.sin().abs().powf(2.0 / n) * t.sin().signum();
-                points.push(egui::pos2(tl_center.x + dx, tl_center.y - dy));
-            }
-            // Bottom-Left
-            let bl_center = egui::pos2(rect.min.x + r, rect.max.y - r);
-            for i in 0..=steps {
-                let t = (i as f32 / steps as f32) * std::f32::consts::FRAC_PI_2;
-                let t = t + std::f32::consts::PI;
-                let dx = r * t.cos().abs().powf(2.0 / n) * t.cos().signum();
-                let dy = r * t.sin().abs().powf(2.0 / n) * t.sin().signum();
-                points.push(egui::pos2(bl_center.x + dx, bl_center.y - dy));
-            }
-            // Bottom-Right
-            let br_center = egui::pos2(rect.max.x - r, rect.max.y - r);
-            for i in 0..=steps {
-                let t = (i as f32 / steps as f32) * std::f32::consts::FRAC_PI_2;
-                let t = t + std::f32::consts::PI * 1.5;
-                let dx = r * t.cos().abs().powf(2.0 / n) * t.cos().signum();
-                let dy = r * t.sin().abs().powf(2.0 / n) * t.sin().signum();
-                points.push(egui::pos2(br_center.x + dx, br_center.y - dy));
-            }
-
+            // G2 or G3: Superellipse corners using helper
+            let points = Self::get_squircle_path(rect, radius, corner_style, false);
             let shape = egui::epaint::PathShape::convex_polygon(points, FLAT_FIELD, egui::Stroke::NONE);
             painter.add(shape);
         }
@@ -324,7 +324,24 @@ impl App for BanquoApp {
                 .order(egui::Order::Foreground)
                 .show(&ctx, |ui| {
                     // Paint background for tabs area with more transparency
-                    ui.painter().rect_filled(title_bar_rect, 0.0, Color32::from_rgba_unmultiplied(30, 28, 35, 160));
+                    let bg_color = Color32::from_rgba_unmultiplied(30, 28, 35, 160);
+                    if corner_style == "square" || radius <= 0.0 {
+                        ui.painter().rect_filled(title_bar_rect, 0.0, bg_color);
+                    } else if corner_style == "g1" {
+                        // For G1, use custom rounding (top corners only)
+                        let rounding = egui::CornerRadius {
+                            nw: radius as u8,
+                            ne: radius as u8,
+                            sw: 0,
+                            se: 0,
+                        };
+                        ui.painter().rect_filled(title_bar_rect, rounding, bg_color);
+                    } else {
+                        // For G2/G3, use helper with top_only=true
+                        let points = Self::get_squircle_path(title_bar_rect, radius, corner_style, true);
+                        let shape = egui::epaint::PathShape::convex_polygon(points, bg_color, egui::Stroke::NONE);
+                        ui.painter().add(shape);
+                    }
 
                     if !self.native_decorations {
                         // Drag to move

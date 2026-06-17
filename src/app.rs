@@ -284,18 +284,38 @@ impl App for BanquoApp {
         // Apply Edge Styles
         let rounding = egui::CornerRadius::same(if corner_style == "square" { 0 } else { radius as u8 });
         let stroke_kind = egui::StrokeKind::Inside;
+        
+        let mut stroke_rect = |draw_rect: Rect, stroke: egui::Stroke| {
+            if corner_style == "square" || radius <= 0.0 || corner_style == "g1" {
+                painter.rect_stroke(draw_rect, rounding, stroke, stroke_kind);
+            } else {
+                // Emulate StrokeKind::Inside by shrinking by half the stroke width
+                let path_rect = draw_rect.shrink(stroke.width / 2.0);
+                // The radius needs to shrink by the same amount so the curve stays parallel
+                let path_radius = (radius - (stroke.width / 2.0)).max(0.0);
+                let points = Self::get_squircle_path(path_rect, path_radius, corner_style, false);
+                let shape = egui::epaint::PathShape {
+                    points,
+                    closed: true,
+                    fill: Color32::TRANSPARENT,
+                    stroke: stroke.into(),
+                };
+                painter.add(shape);
+            }
+        };
+
         if edge_style == "rounded" {
-            painter.rect_stroke(rect, rounding, egui::Stroke::new(1.0, Color32::from_white_alpha(40)), stroke_kind);
+            stroke_rect(rect, egui::Stroke::new(1.0, Color32::from_white_alpha(40)));
         } else if edge_style == "beveled" {
             // Top and left highlight
             let inset_rect = rect.shrink(1.0);
-            painter.rect_stroke(rect, rounding, egui::Stroke::new(1.0, Color32::from_white_alpha(60)), stroke_kind);
-            painter.rect_stroke(inset_rect, rounding, egui::Stroke::new(1.0, Color32::from_black_alpha(150)), stroke_kind);
+            stroke_rect(rect, egui::Stroke::new(1.0, Color32::from_white_alpha(60)));
+            stroke_rect(inset_rect, egui::Stroke::new(1.0, Color32::from_black_alpha(150)));
         } else if edge_style == "3d" {
             // Chunky CRT bezel effect
-            painter.rect_stroke(rect, rounding, egui::Stroke::new(2.0, Color32::from_white_alpha(30)), stroke_kind);
-            painter.rect_stroke(rect.shrink(2.0), rounding, egui::Stroke::new(4.0, Color32::from_black_alpha(120)), stroke_kind);
-            painter.rect_stroke(rect.shrink(6.0), rounding, egui::Stroke::new(1.0, Color32::from_white_alpha(20)), stroke_kind);
+            stroke_rect(rect, egui::Stroke::new(2.0, Color32::from_white_alpha(30)));
+            stroke_rect(rect.shrink(2.0), egui::Stroke::new(4.0, Color32::from_black_alpha(120)));
+            stroke_rect(rect.shrink(6.0), egui::Stroke::new(1.0, Color32::from_white_alpha(20)));
         }
 
         // --- IDLE DETECTION ---

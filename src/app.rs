@@ -204,7 +204,8 @@ impl BanquoApp {
         let steps = 16;
         let mut points = Vec::with_capacity(steps * 4);
 
-        let r = radius.min(rect.width() / 2.0).min(rect.height() / 2.0);
+        let max_h = if top_only { rect.height() } else { rect.height() / 2.0 };
+        let r = radius.min(rect.width() / 2.0).min(max_h);
         
         let mut quadrant = Vec::with_capacity(steps + 1);
         for i in 0..=steps {
@@ -268,15 +269,18 @@ impl App for BanquoApp {
         let corner_padding = (radius / 2.0).max(8.0);
         content_rect = content_rect.shrink(corner_padding);
 
-        // Draw shape
+        // Draw shape with slight inset to hide anti-aliasing halo under the stroke
+        let bg_rect = rect.shrink(0.5);
+        let bg_radius = (radius - 0.5).max(0.0);
+        
         if corner_style == "square" || radius <= 0.0 {
-            painter.rect_filled(rect, 0.0, FLAT_FIELD);
+            painter.rect_filled(bg_rect, 0.0, FLAT_FIELD);
         } else if corner_style == "g1" {
-            let rounding = egui::CornerRadius::same(radius as u8);
-            painter.rect_filled(rect, rounding, FLAT_FIELD);
+            let rounding = egui::CornerRadius::same(bg_radius as u8);
+            painter.rect_filled(bg_rect, rounding, FLAT_FIELD);
         } else {
             // G2 or G3: Superellipse corners using helper
-            let points = Self::get_squircle_path(rect, radius, corner_style, false);
+            let points = Self::get_squircle_path(bg_rect, bg_radius, corner_style, false);
             let shape = egui::epaint::PathShape::convex_polygon(points, FLAT_FIELD, egui::Stroke::NONE);
             painter.add(shape);
         }
@@ -348,20 +352,25 @@ impl App for BanquoApp {
                 .show(&ctx, |ui| {
                     // Paint background for tabs area with more transparency
                     let bg_color = Color32::from_rgba_unmultiplied(30, 28, 35, 160);
+                    
+                    // Shrink slightly to hide AA halo under the stroke
+                    let tab_bg_rect = title_bar_rect.shrink(0.5);
+                    let tab_bg_radius = (radius - 0.5).max(0.0);
+
                     if corner_style == "square" || radius <= 0.0 {
-                        ui.painter().rect_filled(title_bar_rect, 0.0, bg_color);
+                        ui.painter().rect_filled(tab_bg_rect, 0.0, bg_color);
                     } else if corner_style == "g1" {
                         // For G1, use custom rounding (top corners only)
                         let rounding = egui::CornerRadius {
-                            nw: radius as u8,
-                            ne: radius as u8,
+                            nw: tab_bg_radius as u8,
+                            ne: tab_bg_radius as u8,
                             sw: 0,
                             se: 0,
                         };
-                        ui.painter().rect_filled(title_bar_rect, rounding, bg_color);
+                        ui.painter().rect_filled(tab_bg_rect, rounding, bg_color);
                     } else {
                         // For G2/G3, use helper with top_only=true
-                        let points = Self::get_squircle_path(title_bar_rect, radius, corner_style, true);
+                        let points = Self::get_squircle_path(tab_bg_rect, tab_bg_radius, corner_style, true);
                         let shape = egui::epaint::PathShape::convex_polygon(points, bg_color, egui::Stroke::NONE);
                         ui.painter().add(shape);
                     }

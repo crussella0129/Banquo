@@ -1,0 +1,19 @@
+theme = "zircon"
+
+[fonts]
+monospace_path = "C:/Users/charl/Downloads/VictorMono/VictorMonoNerdFontMono-Regular.ttf"
+
+[grid]
+mode = "auto"
+
+[os.windows]
+blur = true
+
+[window]
+edge_style = "beveled"
+corner_style = "g3"
+radius = 24.0
+inset = 0.0
+
+[ui]
+tab_bar_mode = "auto"

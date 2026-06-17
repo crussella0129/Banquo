@@ -86,3 +86,29 @@
 - Implement G1/G2/G3 corner tessellation logic
 - Implement edge style drawing (flat, rounded, beveled glass chamfer, 3d)
 - Update app.rs rendering loop to use the shape instead of flat clear screen
+
+## Sprint 4 (Themes & Graphics Foundations)
+- Implement `get_squircle_path` for g1/g2/g3.
+- Fix anti-aliasing halo and tab bar over-clamping.
+- Implement UI persistent tab bar mode ("Finesstra" layout).
+- **Completed:** 2026-06-16
+
+## Sprint 5 (Themes)
+- Implemented Blanco, Zircon, Concrete, and Volcanic Glass presets.
+- Built 8K procedural texture generator.
+- Built text contrast mapping and multi-pass rendering.
+- Completed: 2026-06-17
+
+## Sprint 6 (Tab Bar Polish)
+- Added individual tab closure `×` button and tab cleanup logic.
+- Hooked `Event::Title` to hot-reload session titles via OSC sequences.
+- Fixed 32px tab bar vertical alignment math.
+- Completed: 2026-06-17
+
+## Sprint 7 (Milestone 7: The Finish)
+- Implemented `notify` crate background thread for filesystem config watching.
+- Implemented `BanquoApp::update` receiver to instantly hot-reload UI state from config changes without tearing down the shell session.
+- Built Command Palette `egui` overlay toggled via `Ctrl+Shift+P` allowing direct theme setting (`theme blanco`).
+- Implemented exponential mathematical easing for organic cursor interpolation.
+- Fixed passthrough bugs preventing `egui` typing from sending keystrokes to the active terminal.
+- Completed: 2026-06-17

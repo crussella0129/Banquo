@@ -151,6 +151,19 @@ pub struct BanquoApp {
     last_mouse_move_time: Instant,
     /// The loaded configuration.
     config: crate::config::BanquoConfig,
+    /// Channel to receive hot-reloaded configs.
+    config_rx: std::sync::mpsc::Receiver<crate::config::BanquoConfig>,
+    
+    // Command Palette state
+    show_command_palette: bool,
+    palette_input: String,
+    
+    // Motion easing state
+    smoothed_cursor_pos: Option<egui::Pos2>,
+    
+    // Cached theme textures
+    texture_blanco: Option<egui::TextureHandle>,
+    texture_concrete: Option<egui::TextureHandle>,
 }
 
 impl BanquoApp {
@@ -159,6 +172,10 @@ impl BanquoApp {
         let (defs, font_source) = build_fonts(&config);
         cc.egui_ctx.set_fonts(defs);
         eprintln!("banquo: monospace face = {:?}", font_source);
+        
+        let (config_tx, config_rx) = std::sync::mpsc::channel();
+        crate::config::BanquoConfig::watch(config_tx);
+        
         Self {
             font_source,
             sessions: vec![session],
@@ -169,6 +186,12 @@ impl BanquoApp {
             last_mouse_pos: None,
             last_mouse_move_time: Instant::now(),
             config,
+            config_rx,
+            show_command_palette: false,
+            palette_input: String::new(),
+            smoothed_cursor_pos: None,
+            texture_blanco: None,
+            texture_concrete: None,
         }
     }
 
@@ -197,6 +220,19 @@ impl BanquoApp {
                 }
             }
         });
+    }
+
+    /// Lazily generate procedural textures for themes if needed.
+    fn ensure_textures(&mut self, ctx: &egui::Context) {
+        let theme = self.config.theme.as_deref().unwrap_or("zircon");
+        
+        if theme == "blanco" && self.texture_blanco.is_none() {
+            let img = crate::texture_gen::generate_blanco_texture(4096, 4096);
+            self.texture_blanco = Some(ctx.load_texture("blanco_bg", img, egui::TextureOptions::LINEAR));
+        } else if theme == "concrete" && self.texture_concrete.is_none() {
+            let img = crate::texture_gen::generate_concrete_texture(4096, 4096);
+            self.texture_concrete = Some(ctx.load_texture("concrete_bg", img, egui::TextureOptions::LINEAR));
+        }
     }
 
     fn get_squircle_path(rect: egui::Rect, radius: f32, corner_style: &str, top_only: bool) -> Vec<egui::Pos2> {
@@ -246,8 +282,23 @@ impl App for BanquoApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
-        // Ensure we have cell metrics.
+        // Process config hot-reloading (Guarantee #5)
+        let mut reloaded = false;
+        while let Ok(cfg) = self.config_rx.try_recv() {
+            self.config = cfg;
+            reloaded = true;
+        }
+        if reloaded {
+            let (defs, font_source) = build_fonts(&self.config);
+            ctx.set_fonts(defs);
+            self.font_source = font_source;
+            self.cell_metrics = None; // Force metrics recompute on font change
+            ctx.request_repaint();
+        }
+
+        // Lazily compute metrics and textures (T-110).
         self.ensure_metrics(&ctx);
+        self.ensure_textures(&ctx);
 
         let window_cfg = &self.config.window;
         let edge_style = window_cfg.edge_style.as_deref().unwrap_or("flat");
@@ -261,34 +312,82 @@ impl App for BanquoApp {
         // Background clear (fully transparent)
         painter.rect_filled(rect, 0.0, Color32::TRANSPARENT);
 
+        // Command palette toggle (Ctrl+Shift+P)
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::P)) {
+            self.show_command_palette = !self.show_command_palette;
+        }
+
         // Inset the drawing rect
         rect = rect.shrink(inset);
 
         let mut content_rect = rect;
         
-        let persistent_tabs = self.config.ui.tab_bar_mode.as_deref() == Some("persistent");
-        if persistent_tabs {
-            // Push content area down by the height of the tab bar
-            content_rect.min.y += 32.0;
-        }
+        // Push content area down by the height of the tab bar so text doesn't get clipped
+        // by the rounded top corners, and so the auto-collapsing tab bar doesn't cover text.
+        content_rect.min.y += 32.0;
 
         // Pad the content area so terminal grid doesn't collide with the rounded borders
         let corner_padding = (radius / 2.0).max(8.0);
         content_rect = content_rect.shrink(corner_padding);
 
+        let theme = self.config.theme.as_deref().unwrap_or("zircon");
+        
+        let (bg_fill, bg_texture) = match theme {
+            "blanco" => (Color32::WHITE, self.texture_blanco.clone()),
+            "concrete" => (Color32::from_rgb(180, 180, 180), self.texture_concrete.clone()),
+            "volcanic" | "volcanic glass" | "volcanic_glass" => (
+                Color32::from_rgba_unmultiplied(0, 0, 0, 200), 
+                None
+            ),
+            _ => (Color32::from_black_alpha(142), None), // zircon with slightly more transparency
+        };
+
         // Draw shape with slight inset to hide anti-aliasing halo under the stroke
         let bg_rect = rect.shrink(0.5);
         let bg_radius = (radius - 0.5).max(0.0);
         
-        if corner_style == "square" || radius <= 0.0 {
-            painter.rect_filled(bg_rect, 0.0, FLAT_FIELD);
+        let points = if corner_style == "square" || radius <= 0.0 {
+            vec![
+                bg_rect.left_top(),
+                bg_rect.right_top(),
+                bg_rect.right_bottom(),
+                bg_rect.left_bottom(),
+            ]
         } else if corner_style == "g1" {
-            let rounding = egui::CornerRadius::same(bg_radius as u8);
-            painter.rect_filled(bg_rect, rounding, FLAT_FIELD);
+            // We approximate G1 with a superellipse of n=2.0 (which is a perfect circle for corners)
+            Self::get_squircle_path(bg_rect, bg_radius, "g1", false)
         } else {
-            // G2 or G3: Superellipse corners using helper
-            let points = Self::get_squircle_path(bg_rect, bg_radius, corner_style, false);
-            let shape = egui::epaint::PathShape::convex_polygon(points, FLAT_FIELD, egui::Stroke::NONE);
+            Self::get_squircle_path(bg_rect, bg_radius, corner_style, false)
+        };
+
+        if let Some(tex) = bg_texture {
+            // Draw textured polygon using a triangle fan Mesh
+            let mut mesh = egui::epaint::Mesh::with_texture(tex.id());
+            let center_idx = 0;
+            mesh.vertices.push(egui::epaint::Vertex {
+                pos: bg_rect.center(),
+                uv: egui::pos2(0.5, 0.5),
+                color: Color32::WHITE,
+            });
+            for p in &points {
+                let u = (p.x - bg_rect.min.x) / bg_rect.width();
+                let v = (p.y - bg_rect.min.y) / bg_rect.height();
+                mesh.vertices.push(egui::epaint::Vertex {
+                    pos: *p,
+                    uv: egui::pos2(u, v),
+                    color: Color32::WHITE,
+                });
+            }
+            for i in 1..=points.len() {
+                let next = if i == points.len() { 1 } else { i + 1 };
+                mesh.indices.push(center_idx);
+                mesh.indices.push(i as u32);
+                mesh.indices.push(next as u32);
+            }
+            painter.add(mesh);
+        } else {
+            // Solid color polygon
+            let shape = egui::epaint::PathShape::convex_polygon(points, bg_fill, egui::Stroke::NONE);
             painter.add(shape);
         }
 
@@ -422,11 +521,13 @@ impl App for BanquoApp {
 
                     // Render Tabs
                     let mut tab_x = rect.min.x + 8.0;
-                    let tab_y = rect.min.y + 6.0;
+                    let tab_y = rect.min.y + 4.0; // Center 24px tab in 32px bar
                     let tab_h = 24.0;
                     
+                    let mut tab_to_close = None;
+
                     for i in 0..self.sessions.len() {
-                        let tab_w = 80.0;
+                        let tab_w = 140.0;
                         let tab_rect = Rect::from_min_size(
                             egui::pos2(tab_x, tab_y),
                             Vec2::new(tab_w, tab_h)
@@ -447,15 +548,61 @@ impl App for BanquoApp {
                         
                         ui.painter().rect_filled(tab_rect, 4.0, bg_color);
                         
+                        // Close button on the right edge of the tab
+                        let close_rect = Rect::from_min_max(
+                            egui::pos2(tab_rect.max.x - 24.0, tab_rect.min.y),
+                            tab_rect.max,
+                        );
+                        let close_resp = ui.interact(close_rect, ui.id().with(format!("tab_close_{}", i)), egui::Sense::click());
+                        if close_resp.clicked() {
+                            tab_to_close = Some(i);
+                        }
+                        
+                        let close_color = if close_resp.hovered() { Color32::WHITE } else { Color32::GRAY };
                         ui.painter().text(
-                            tab_rect.center(),
+                            close_rect.center(),
                             egui::Align2::CENTER_CENTER,
-                            format!("Tab {}", i + 1),
+                            "×",
                             FontId::new(14.0, FontFamily::Name(crate::fonts::BANQUO_MONO.into())),
+                            close_color,
+                        );
+                        
+                        // Dynamic Tab Title
+                        let raw_title = self.sessions[i].title.lock().unwrap().clone();
+                        let title_text = if raw_title.is_empty() {
+                            "Terminal".to_string()
+                        } else if raw_title.chars().count() > 12 {
+                            format!("{}…", raw_title.chars().take(11).collect::<String>())
+                        } else {
+                            raw_title
+                        };
+                        
+                        let title_rect = Rect::from_min_max(
+                            tab_rect.min,
+                            egui::pos2(tab_rect.max.x - 24.0, tab_rect.max.y),
+                        );
+                        
+                        ui.painter().text(
+                            title_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            title_text,
+                            FontId::new(13.0, FontFamily::Name(crate::fonts::BANQUO_MONO.into())),
                             if i == self.active_tab { Color32::WHITE } else { Color32::GRAY },
                         );
                         
                         tab_x += tab_w + 4.0;
+                    }
+                    
+                    if let Some(i) = tab_to_close {
+                        self.sessions.remove(i);
+                        if self.sessions.is_empty() {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                            return; // Stop drawing to avoid out-of-bounds
+                        } else {
+                            if self.active_tab >= self.sessions.len() {
+                                self.active_tab = self.sessions.len() - 1;
+                            }
+                        }
                     }
                     
                     // Add Tab Button
@@ -507,6 +654,10 @@ impl App for BanquoApp {
             }
         }
 
+        if self.sessions.is_empty() {
+            return;
+        }
+
         // Load the latest snapshot (lock-free, guarantee #2).
         let snapshot: Arc<Snapshot> = self.sessions[self.active_tab].snapshot.load_full();
 
@@ -521,11 +672,24 @@ impl App for BanquoApp {
                 self.last_grid_size = Some((cols, rows));
             }
 
-            // Compute the centering offset (absorb slack into padding).
             let (offset_x, offset_y) =
                 metrics.centering_offset(content_rect.width(), content_rect.height(), GRID_PADDING, cols, rows);
             let origin_x = content_rect.min.x + offset_x;
             let origin_y = content_rect.min.y + offset_y;
+
+            let theme = self.config.theme.as_deref().unwrap_or("zircon");
+            let is_volcanic = matches!(theme, "volcanic" | "volcanic glass" | "volcanic_glass");
+            let is_concrete = theme == "concrete";
+            let is_blanco = theme == "blanco";
+            let px_offset = 1.0 / ctx.pixels_per_point();
+
+            let cursor_color = if is_concrete {
+                Color32::from_rgba_premultiplied(70, 70, 75, 180)
+            } else if is_volcanic {
+                Color32::from_rgba_premultiplied(180, 15, 15, 180)
+            } else {
+                Color32::from_rgba_premultiplied(235, 232, 226, 180)
+            };
 
             // Paint each cell (T-108).
             let paint_cols = cols.min(snapshot.cols);
@@ -559,7 +723,28 @@ impl App for BanquoApp {
 
                         // Glyph (skip spaces for performance).
                         if cell.ch != ' ' {
-                            let fg = rgb_to_color32(cell.fg);
+                            let mut fg = rgb_to_color32(cell.fg);
+                            
+                            // Check if foreground is a light grayscale (default text color)
+                            let r = fg.r() as i32;
+                            let g = fg.g() as i32;
+                            let b = fg.b() as i32;
+                            let is_default_text = (r - g).abs() < 20 && (r - b).abs() < 20 && r > 100;
+                            let has_custom_bg = bg != DEFAULT_BG;
+
+                            if is_concrete || is_blanco {
+                                // Override default foreground to very dark gray so it's clearly visible
+                                // BUT only do this if there's no custom background (e.g., a CLI highlight bar)
+                                if is_default_text && !has_custom_bg {
+                                    fg = Color32::from_rgb(15, 15, 20); // Near black
+                                }
+                            } else if is_volcanic {
+                                // Map light grayscale (default text) to blood red
+                                if is_default_text && !has_custom_bg {
+                                    fg = Color32::from_rgb(200, 10, 10); // True blood red, highly saturated
+                                }
+                            }
+
                             painter.text(
                                 egui::pos2(x, y),
                                 egui::Align2::LEFT_TOP,
@@ -593,7 +778,26 @@ impl App for BanquoApp {
                     cx += snapshot.cursor.col as f32 * metrics.cell_w;
                 }
                 
-                let cy = origin_y + snapshot.cursor.row as f32 * metrics.cell_h;
+                let target_cy = origin_y + snapshot.cursor.row as f32 * metrics.cell_h;
+                let target_pos = egui::pos2(cx, target_cy);
+                
+                // Cursor Easing
+                let dt = ctx.input(|i| i.stable_dt).min(0.1);
+                let current_pos = self.smoothed_cursor_pos.unwrap_or(target_pos);
+                
+                // If it's a huge jump (e.g., cleared screen or changed tabs), snap immediately
+                let new_pos = if current_pos.distance(target_pos) > 400.0 {
+                    target_pos
+                } else {
+                    current_pos.lerp(target_pos, 1.0 - (-25.0 * dt).exp())
+                };
+                
+                self.smoothed_cursor_pos = Some(new_pos);
+                
+                // Keep requesting repaints until the cursor settles
+                if new_pos.distance(target_pos) > 0.5 {
+                    ctx.request_repaint();
+                }
                 
                 let cursor_ch = snapshot.cell(snapshot.cursor.col, snapshot.cursor.row).map(|c| c.ch).unwrap_or(' ');
                 let cursor_w = if is_auto {
@@ -604,27 +808,34 @@ impl App for BanquoApp {
                 };
                 
                 let cursor_rect = Rect::from_min_size(
-                    egui::pos2(cx, cy),
+                    new_pos,
                     Vec2::new(cursor_w, metrics.cell_h),
                 );
-                painter.rect_filled(cursor_rect, 0.0, CURSOR_COLOR);
+                painter.rect_filled(cursor_rect, 0.0, cursor_color);
 
                 // Paint the character under the cursor in the inverse color.
                 if cursor_ch != ' ' {
+                    let inverse_fg = if is_volcanic || is_concrete {
+                        Color32::WHITE // Pop against dark cursors
+                    } else {
+                        Color32::BLACK // Pop against bright cursor
+                    };
+
                     painter.text(
-                        egui::pos2(cx, cy),
+                        new_pos,
                         egui::Align2::LEFT_TOP,
                         cursor_ch,
                         mono_font(),
-                        DEFAULT_BG,
+                        inverse_fg,
                     );
                 }
             }
         }
 
         // Process input events (T-109).
-        let events: Vec<Event> = ctx.input(|i| i.events.clone());
-        for event in &events {
+        if !self.show_command_palette {
+            let events: Vec<Event> = ctx.input(|i| i.events.clone());
+            for event in &events {
             match event {
                 Event::Text(text) => {
                     let bytes = text.as_bytes();
@@ -695,9 +906,53 @@ impl App for BanquoApp {
                 _ => {}
             }
         }
+        } // end of if !show_command_palette
 
         // Keep frames flowing while the terminal is active.
         ctx.request_repaint();
+
+        // Draw Command Palette Overlay
+        if self.show_command_palette {
+            let overlay_rect = ui.max_rect();
+            // Draw a frosted semi-transparent background
+            ui.painter().rect_filled(overlay_rect, 0.0, Color32::from_black_alpha(150));
+            
+            let palette_w = 400.0;
+            let palette_h = 40.0;
+            let palette_rect = Rect::from_center_size(overlay_rect.center(), Vec2::new(palette_w, palette_h));
+            
+            ui.allocate_ui_at_rect(palette_rect, |ui| {
+                ui.painter().rect_filled(palette_rect, 8.0, Color32::from_rgb(30, 30, 35));
+                let response = ui.add(
+                    egui::TextEdit::singleline(&mut self.palette_input)
+                        .font(egui::TextStyle::Monospace)
+                        .desired_width(palette_w)
+                        .margin(egui::vec2(10.0, 10.0))
+                );
+                response.request_focus();
+                
+                if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    // execute command
+                    let cmd = self.palette_input.clone();
+                    let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
+                    if !parts.is_empty() {
+                        match parts[0] {
+                            "theme" if parts.len() > 1 => {
+                                self.config.theme = Some(parts[1].to_string());
+                                let _ = self.config.save();
+                            }
+                            _ => {}
+                        }
+                    }
+                    self.palette_input.clear();
+                    self.show_command_palette = false;
+                }
+                
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    self.show_command_palette = false;
+                }
+            });
+        }
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {

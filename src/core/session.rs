@@ -12,7 +12,7 @@
 //! `cat` of a 2GB file falls *behind* but never *freezes* the window.
 
 use std::io::{Read, Write};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use arc_swap::ArcSwap;
@@ -29,6 +29,8 @@ use super::term::BanquoTerm;
 pub struct SessionHandle {
     /// The latest published snapshot. Load with `snapshot.load()`.
     pub snapshot: Arc<ArcSwap<Snapshot>>,
+    /// The dynamic title of the terminal session.
+    pub title: Arc<Mutex<String>>,
     /// Write end of the PTY — the Face writes encoded keystrokes here.
     pub writer: Arc<std::sync::Mutex<Box<dyn Write + Send>>>,
     /// The master PTY handle — used for resize.
@@ -70,7 +72,8 @@ pub fn spawn(cols: usize, rows: usize) -> anyhow::Result<SessionHandle> {
     let pty = super::pty::open_pty(cols as u16, rows as u16)?;
 
     let writer_arc = Arc::new(std::sync::Mutex::new(pty.writer));
-    let listener = super::term::BanquoListener::new(Arc::clone(&writer_arc));
+    let title_arc = Arc::new(std::sync::Mutex::new(String::new()));
+    let listener = super::term::BanquoListener::new(Arc::clone(&writer_arc), Arc::clone(&title_arc));
     let term = BanquoTerm::new(cols, rows, listener);
     let term = Arc::new(std::sync::Mutex::new(term));
 
@@ -103,6 +106,7 @@ pub fn spawn(cols: usize, rows: usize) -> anyhow::Result<SessionHandle> {
 
     Ok(SessionHandle {
         snapshot,
+        title: title_arc,
         writer: writer_arc,
         master: pty.master,
         term,

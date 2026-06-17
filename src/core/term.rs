@@ -130,21 +130,30 @@ pub struct BanquoTerm {
 #[derive(Clone)]
 pub struct BanquoListener {
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    title: Arc<Mutex<String>>,
 }
 
 impl BanquoListener {
-    pub fn new(writer: Arc<Mutex<Box<dyn Write + Send>>>) -> Self {
-        Self { writer }
+    pub fn new(writer: Arc<Mutex<Box<dyn Write + Send>>>, title: Arc<Mutex<String>>) -> Self {
+        Self { writer, title }
     }
 }
 
 impl EventListener for BanquoListener {
     fn send_event(&self, event: Event) {
-        if let Event::PtyWrite(text) = event {
-            if let Ok(mut w) = self.writer.lock() {
-                let _ = w.write_all(text.as_bytes());
-                let _ = w.flush();
+        match event {
+            Event::PtyWrite(text) => {
+                if let Ok(mut w) = self.writer.lock() {
+                    let _ = w.write_all(text.as_bytes());
+                    let _ = w.flush();
+                }
             }
+            Event::Title(t) => {
+                if let Ok(mut title) = self.title.lock() {
+                    *title = t;
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -316,7 +325,10 @@ mod tests {
     // --- T-104 integration tests: headless truth-half ---
 
     fn dummy_listener() -> BanquoListener {
-        BanquoListener::new(std::sync::Arc::new(std::sync::Mutex::new(Box::new(std::io::sink()))))
+        BanquoListener::new(
+            std::sync::Arc::new(std::sync::Mutex::new(Box::new(std::io::sink()))),
+            std::sync::Arc::new(std::sync::Mutex::new(String::new())),
+        )
     }
 
     #[test]

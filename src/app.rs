@@ -209,8 +209,8 @@ impl BanquoApp {
         let mut quadrant = Vec::with_capacity(steps + 1);
         for i in 0..=steps {
             let t = (i as f32 / steps as f32) * std::f32::consts::FRAC_PI_2;
-            let x = t.cos().powf(2.0 / n);
-            let y = t.sin().powf(2.0 / n);
+            let x = t.cos().max(0.0).powf(2.0 / n);
+            let y = t.sin().max(0.0).powf(2.0 / n);
             quadrant.push(egui::vec2(x, y));
         }
 
@@ -263,7 +263,10 @@ impl App for BanquoApp {
         // Inset the drawing rect
         rect = rect.shrink(inset);
 
-        let content_rect = rect;
+        let mut content_rect = rect;
+        // Pad the content area so terminal grid doesn't collide with the rounded borders
+        let corner_padding = (radius / 2.0).max(8.0);
+        content_rect = content_rect.shrink(corner_padding);
 
         // Draw shape
         if corner_style == "square" || radius <= 0.0 {

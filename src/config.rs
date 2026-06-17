@@ -12,6 +12,8 @@ pub struct BanquoConfig {
     pub os: OsConfig,
     #[serde(default)]
     pub window: WindowAppearanceConfig,
+    #[serde(default)]
+    pub ui: UiConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -20,6 +22,11 @@ pub struct WindowAppearanceConfig {
     pub corner_style: Option<String>,
     pub radius: Option<f32>,
     pub inset: Option<f32>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct UiConfig {
+    pub tab_bar_mode: Option<String>,
 }
 
 impl Default for WindowAppearanceConfig {

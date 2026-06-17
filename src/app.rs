@@ -265,6 +265,13 @@ impl App for BanquoApp {
         rect = rect.shrink(inset);
 
         let mut content_rect = rect;
+        
+        let persistent_tabs = self.config.ui.tab_bar_mode.as_deref() == Some("persistent");
+        if persistent_tabs {
+            // Push content area down by the height of the tab bar
+            content_rect.min.y += 32.0;
+        }
+
         // Pad the content area so terminal grid doesn't collide with the rounded borders
         let corner_padding = (radius / 2.0).max(8.0);
         content_rect = content_rect.shrink(corner_padding);
@@ -334,8 +341,9 @@ impl App for BanquoApp {
         let time_since_move = Instant::now().duration_since(self.last_mouse_move_time);
         let pointer_y = hover_pos.map(|p| p.y).unwrap_or(f32::MAX);
         
-        // Show tabs if mouse is within top 40px AND moved within the last 3 seconds
-        let show_tabs = pointer_y <= 40.0 && time_since_move < Duration::from_secs(3);
+        let persistent_tabs = self.config.ui.tab_bar_mode.as_deref() == Some("persistent");
+        // Show tabs if persistent, or if mouse is within top 40px AND moved within the last 3 seconds
+        let show_tabs = persistent_tabs || (pointer_y <= 40.0 && time_since_move < Duration::from_secs(3));
 
         // --- OVERLAY DRAWING ---
         if show_tabs {

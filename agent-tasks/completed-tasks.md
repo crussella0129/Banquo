@@ -81,3 +81,8 @@
 - [x] Update Section VII (Tabs) in README
 - [x] Add Auto-Snap Proportional Grid documentation
 - [x] Add Banquo Compose documentation
+- Update config.rs to add WindowAppearanceConfig
+- Update main.rs to disable native_decorations globally
+- Implement G1/G2/G3 corner tessellation logic
+- Implement edge style drawing (flat, rounded, beveled glass chamfer, 3d)
+- Update app.rs rendering loop to use the shape instead of flat clear screen

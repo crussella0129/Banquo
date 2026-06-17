@@ -207,13 +207,93 @@ impl App for BanquoApp {
         // Ensure we have cell metrics.
         self.ensure_metrics(&ctx);
 
-        let rect = ui.max_rect();
-        let painter = ui.painter();
+        let window_cfg = &self.config.window;
+        let edge_style = window_cfg.edge_style.as_deref().unwrap_or("flat");
+        let corner_style = window_cfg.corner_style.as_deref().unwrap_or("square");
+        let radius = window_cfg.radius.unwrap_or(8.0);
+        let inset = window_cfg.inset.unwrap_or(0.0);
 
-        // Flat field substrate.
-        painter.rect_filled(rect, 0.0, FLAT_FIELD);
+        let mut rect = ui.max_rect();
+        let painter = ui.painter();
+        
+        // Background clear (fully transparent)
+        painter.rect_filled(rect, 0.0, Color32::TRANSPARENT);
+
+        // Inset the drawing rect
+        rect = rect.shrink(inset);
 
         let content_rect = rect;
+
+        // Draw shape
+        if corner_style == "square" || radius <= 0.0 {
+            painter.rect_filled(rect, 0.0, FLAT_FIELD);
+        } else if corner_style == "g1" {
+            let rounding = egui::CornerRadius::same(radius as u8);
+            painter.rect_filled(rect, rounding, FLAT_FIELD);
+        } else {
+            // G2 or G3: Superellipse corners
+            let n = if corner_style == "g2" { 3.5 } else { 5.0 };
+            let steps = 16;
+            let mut points = Vec::with_capacity(steps * 4);
+
+            let r = radius.min(rect.width() / 2.0).min(rect.height() / 2.0);
+
+            // Top-Right
+            let tr_center = egui::pos2(rect.max.x - r, rect.min.y + r);
+            for i in 0..=steps {
+                let t = (i as f32 / steps as f32) * std::f32::consts::FRAC_PI_2;
+                let dx = r * t.cos().powf(2.0 / n);
+                let dy = r * t.sin().powf(2.0 / n);
+                points.push(egui::pos2(tr_center.x + dx, tr_center.y - dy));
+            }
+            // Top-Left
+            let tl_center = egui::pos2(rect.min.x + r, rect.min.y + r);
+            for i in 0..=steps {
+                let t = (i as f32 / steps as f32) * std::f32::consts::FRAC_PI_2;
+                let t = t + std::f32::consts::FRAC_PI_2;
+                let dx = r * t.cos().abs().powf(2.0 / n) * t.cos().signum();
+                let dy = r * t.sin().abs().powf(2.0 / n) * t.sin().signum();
+                points.push(egui::pos2(tl_center.x + dx, tl_center.y - dy));
+            }
+            // Bottom-Left
+            let bl_center = egui::pos2(rect.min.x + r, rect.max.y - r);
+            for i in 0..=steps {
+                let t = (i as f32 / steps as f32) * std::f32::consts::FRAC_PI_2;
+                let t = t + std::f32::consts::PI;
+                let dx = r * t.cos().abs().powf(2.0 / n) * t.cos().signum();
+                let dy = r * t.sin().abs().powf(2.0 / n) * t.sin().signum();
+                points.push(egui::pos2(bl_center.x + dx, bl_center.y - dy));
+            }
+            // Bottom-Right
+            let br_center = egui::pos2(rect.max.x - r, rect.max.y - r);
+            for i in 0..=steps {
+                let t = (i as f32 / steps as f32) * std::f32::consts::FRAC_PI_2;
+                let t = t + std::f32::consts::PI * 1.5;
+                let dx = r * t.cos().abs().powf(2.0 / n) * t.cos().signum();
+                let dy = r * t.sin().abs().powf(2.0 / n) * t.sin().signum();
+                points.push(egui::pos2(br_center.x + dx, br_center.y - dy));
+            }
+
+            let shape = egui::epaint::PathShape::convex_polygon(points, FLAT_FIELD, egui::Stroke::NONE);
+            painter.add(shape);
+        }
+
+        // Apply Edge Styles
+        let rounding = egui::CornerRadius::same(if corner_style == "square" { 0 } else { radius as u8 });
+        let stroke_kind = egui::StrokeKind::Inside;
+        if edge_style == "rounded" {
+            painter.rect_stroke(rect, rounding, egui::Stroke::new(1.0, Color32::from_white_alpha(40)), stroke_kind);
+        } else if edge_style == "beveled" {
+            // Top and left highlight
+            let inset_rect = rect.shrink(1.0);
+            painter.rect_stroke(rect, rounding, egui::Stroke::new(1.0, Color32::from_white_alpha(60)), stroke_kind);
+            painter.rect_stroke(inset_rect, rounding, egui::Stroke::new(1.0, Color32::from_black_alpha(150)), stroke_kind);
+        } else if edge_style == "3d" {
+            // Chunky CRT bezel effect
+            painter.rect_stroke(rect, rounding, egui::Stroke::new(2.0, Color32::from_white_alpha(30)), stroke_kind);
+            painter.rect_stroke(rect.shrink(2.0), rounding, egui::Stroke::new(4.0, Color32::from_black_alpha(120)), stroke_kind);
+            painter.rect_stroke(rect.shrink(6.0), rounding, egui::Stroke::new(1.0, Color32::from_white_alpha(20)), stroke_kind);
+        }
 
         // --- IDLE DETECTION ---
         let hover_pos = ctx.input(|i| i.pointer.hover_pos());

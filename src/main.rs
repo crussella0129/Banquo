@@ -64,9 +64,8 @@ fn main() -> Result<(), eframe::Error> {
     // when the Face knows the actual panel dimensions).
     let session = core::session::spawn(80, 24).expect("failed to spawn terminal session");
 
-    // For Windows, we use a custom frameless window.
-    // For Unix/macOS, we default to native decorations so we don't fight the WM/compositor.
-    let native_decorations = !cfg!(target_os = "windows");
+    // For Banquo, we use a custom frameless window globally to allow custom edge/corner drawing.
+    let native_decorations = false;
 
     let options = eframe::NativeOptions {
         renderer: eframe::Renderer::Wgpu,

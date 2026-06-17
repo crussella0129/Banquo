@@ -10,6 +10,27 @@ pub struct BanquoConfig {
     pub grid: GridConfig,
     #[serde(default)]
     pub os: OsConfig,
+    #[serde(default)]
+    pub window: WindowAppearanceConfig,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct WindowAppearanceConfig {
+    pub edge_style: Option<String>,
+    pub corner_style: Option<String>,
+    pub radius: Option<f32>,
+    pub inset: Option<f32>,
+}
+
+impl Default for WindowAppearanceConfig {
+    fn default() -> Self {
+        Self {
+            edge_style: Some("flat".to_string()),
+            corner_style: Some("square".to_string()),
+            radius: Some(8.0),
+            inset: Some(0.0),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]

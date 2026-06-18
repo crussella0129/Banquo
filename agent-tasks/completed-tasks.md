@@ -120,3 +120,9 @@
 - [x] Update pp.rs state and rendering for primordial.
 - [x] Create configs/primordial.toml.
 - [x] Update recipe card artifact.
+
+## T-1099 (sprint 10) — Build sanity-gate remediation
+- **Description:** The sprint-10 test report only ran `cargo check`, which missed the protocol's `cargo clippy --all-targets -- -D warnings` gate. Fixed 4 issues: (1) test `test_transparency_invariants` referenced the removed `FLAT_FIELD` constant (E0425 — tests didn't compile); replaced with the still-valid zero-alpha `CLEAR_COLOR` invariant. (2) `font_for_char` manual range check → `('\u{2500}'..='\u{259F}').contains(&ch)`. (3) collapsed an `else { if }` block in the tab-close path. (4) removed redundant `.trim()` before `.split_whitespace()` in the command palette. Also stripped trailing whitespace (rustfmt internal error) and gitignored stray `banquo_stderr.txt`. Now green: clippy clean under `-D warnings`, 25 + 4 tests pass.
+- **Completed:** 2026-06-18T00:00:00Z
+- **Files modified:** src/app.rs, .gitignore
+- **Commit:** `dbdc3f7`

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct BanquoConfig {
@@ -77,29 +77,34 @@ pub struct MacosConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
-pub struct LinuxConfig {
-}
+pub struct LinuxConfig {}
 
 impl BanquoConfig {
     /// Loads the configuration from the OS-specific config directory.
     /// If the file does not exist or is invalid, returns the default config.
     pub fn load() -> Self {
         let config_path = Self::get_config_path();
-        
+
         if let Some(path) = config_path {
             if path.exists() {
                 if let Ok(content) = fs::read_to_string(&path) {
                     if let Ok(config) = toml::from_str(&content) {
                         return config;
                     } else {
-                        eprintln!("banquo: Failed to parse TOML at {:?}. Falling back to defaults.", path);
+                        eprintln!(
+                            "banquo: Failed to parse TOML at {:?}. Falling back to defaults.",
+                            path
+                        );
                     }
                 } else {
-                    eprintln!("banquo: Failed to read config file at {:?}. Falling back to defaults.", path);
+                    eprintln!(
+                        "banquo: Failed to read config file at {:?}. Falling back to defaults.",
+                        path
+                    );
                 }
             }
         }
-        
+
         Self::default()
     }
 
@@ -132,9 +137,9 @@ impl BanquoConfig {
         let config_path = Self::get_config_path();
         if let Some(path) = config_path {
             std::thread::spawn(move || {
-                use notify::{Watcher, RecursiveMode};
+                use notify::{RecursiveMode, Watcher};
                 let (notify_tx, notify_rx) = std::sync::mpsc::channel();
-                
+
                 let mut watcher = match notify::recommended_watcher(notify_tx) {
                     Ok(w) => w,
                     Err(e) => {
@@ -162,7 +167,7 @@ impl BanquoConfig {
                                 let config = Self::load();
                                 let _ = tx.send(config);
                             }
-                        },
+                        }
                         Err(e) => eprintln!("banquo: config watch error: {:?}", e),
                     }
                 }

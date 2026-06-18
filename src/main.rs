@@ -84,6 +84,13 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "Banquo",
         options,
-        Box::new(move |cc| Ok(Box::new(app::BanquoApp::new(cc, session, native_decorations, config)))),
+        Box::new(move |cc| {
+            Ok(Box::new(app::BanquoApp::new(
+                cc,
+                session,
+                native_decorations,
+                config,
+            )))
+        }),
     )
 }

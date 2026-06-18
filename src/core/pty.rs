@@ -36,13 +36,13 @@ pub fn open_pty(cols: u16, rows: u16) -> anyhow::Result<PtyHandle> {
     })?;
 
     let mut cmd = CommandBuilder::new_default_prog();
-    
+
     // Explicitly announce UTF-8 / TrueColor support to shells and tools
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
     cmd.env("LANG", "en_US.UTF-8");
     cmd.env("LC_ALL", "en_US.UTF-8");
-    
+
     // Some tools on Windows detect Windows Terminal capabilities via this variable:
     cmd.env("WT_SESSION", "1");
 

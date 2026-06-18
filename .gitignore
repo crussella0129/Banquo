@@ -4,6 +4,10 @@
 # Keep Cargo.lock tracked: Banquo is a binary, so a reproducible lockfile is
 # wanted.
 
+# Stray runtime logs from launching the app (eprintln diagnostics redirected).
+banquo_stderr.txt
+*.log
+
 # >>> sprint-loops >>>
 # Ephemeral sprint working memory — regenerable; the real outcome lives in the
 # per-task git commits + decisions.md. KEEP tracked (long-term memory the

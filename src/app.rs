@@ -10,9 +10,9 @@
 use std::io::Write;
 
 use eframe::{App, CreationContext};
-use egui::{Color32, Event, FontFamily, FontId, Key, Modifiers, Rect, Vec2, Pos2};
+use egui::{Color32, Event, FontFamily, FontId, Key, Modifiers, Pos2, Rect, Vec2};
 use std::sync::Arc;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
 use crate::core::session::SessionHandle;
 use crate::core::snapshot::{Rgb, Snapshot};
@@ -21,9 +21,6 @@ use crate::metrics::CellMetrics;
 
 /// The framebuffer clear color: fully transparent (M1 carry-forward).
 pub const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
-
-// Constants kept for potential future use or documentation
-// const FLAT_FIELD: Color32 = Color32::from_rgba_premultiplied(16, 14, 19, 180);
 
 /// Default background
 const DEFAULT_BG: Color32 = Color32::from_rgb(0, 0, 0);
@@ -54,7 +51,7 @@ fn symbols_font(symbols_size: f32) -> FontId {
 
 /// Select the appropriate font for a character (symbol mapping).
 fn font_for_char(ch: char, symbols_size: f32) -> FontId {
-    if ch >= '\u{2500}' && ch <= '\u{259F}' {
+    if ('\u{2500}'..='\u{259F}').contains(&ch) {
         symbols_font(symbols_size)
     } else {
         mono_font()
@@ -168,14 +165,14 @@ pub struct BanquoApp {
     config: crate::config::BanquoConfig,
     /// Channel to receive hot-reloaded configs.
     config_rx: std::sync::mpsc::Receiver<crate::config::BanquoConfig>,
-    
+
     // Command Palette state
     show_command_palette: bool,
     palette_input: String,
-    
+
     // Motion easing state
     smoothed_cursor_pos: Option<egui::Pos2>,
-    
+
     // Cached theme textures
     texture_blanco: Option<egui::TextureHandle>,
     texture_concrete: Option<egui::TextureHandle>,
@@ -184,14 +181,19 @@ pub struct BanquoApp {
 
 impl BanquoApp {
     /// Construct the app with the session handle and install fonts.
-    pub fn new(cc: &CreationContext<'_>, session: SessionHandle, native_decorations: bool, config: crate::config::BanquoConfig) -> Self {
+    pub fn new(
+        cc: &CreationContext<'_>,
+        session: SessionHandle,
+        native_decorations: bool,
+        config: crate::config::BanquoConfig,
+    ) -> Self {
         let (defs, font_source) = build_fonts(&config);
         cc.egui_ctx.set_fonts(defs);
         eprintln!("banquo: monospace face = {:?}", font_source);
-        
+
         let (config_tx, config_rx) = std::sync::mpsc::channel();
         crate::config::BanquoConfig::watch(config_tx);
-        
+
         Self {
             font_source,
             sessions: vec![session],
@@ -237,29 +239,29 @@ impl BanquoApp {
         // Measure symbols at base size to find the scale ratio
         let font_blocks = symbols_font(MONO_SIZE);
         let ppp = ctx.pixels_per_point();
-        
+
         let offset_x = self.config.fonts.offset_x.unwrap_or(0.0);
         let offset_y = self.config.fonts.offset_y.unwrap_or(0.0);
-        
+
         ctx.fonts_mut(|fonts| {
             let layout_m = fonts.layout_no_wrap("M".to_string(), font_text.clone(), Color32::WHITE);
             let layout_block = fonts.layout_no_wrap("█".to_string(), font_blocks.clone(), Color32::WHITE);
-            
+
             if !layout_m.rows.is_empty() && !layout_block.rows.is_empty() {
                 let text_w = layout_m.rect.width();
                 let text_h = layout_m.rows[0].height();
-                
+
                 let raw_w = text_w + offset_x;
                 let raw_h = text_h + offset_y;
-                
+
                 // Snap grid to physical pixel grid: ceil ensures cells never
                 // under-size.
                 let cell_w = (raw_w * ppp).ceil() / ppp;
                 let cell_h = (raw_h * ppp).ceil() / ppp;
-                
+
                 let block_w = layout_block.rect.width();
                 let block_h = layout_block.rect.height();
-                
+
                 // Scale the symbols font so its block character fills both
                 // the cell width AND cell height. We take the max of both
                 // ratios, and add a tiny epsilon (1%) to ensure overlapping,
@@ -267,11 +269,11 @@ impl BanquoApp {
                 let scale_x = if block_w > 0.0 { cell_w / block_w } else { 1.0 };
                 let scale_y = if block_h > 0.0 { cell_h / block_h } else { 1.0 };
                 let scale = scale_x.max(scale_y) * 1.01;
-                
+
                 self.symbols_size = MONO_SIZE * scale;
-                
+
                 eprintln!("banquo: metrics: text_w={text_w} text_h={text_h} cell_w={cell_w} cell_h={cell_h} scale={scale}");
-                
+
                 if cell_w > 0.0 && cell_h > 0.0 {
                     self.cell_metrics = Some(CellMetrics::new(cell_w, cell_h));
                 }
@@ -282,27 +284,39 @@ impl BanquoApp {
     /// Lazily generate procedural textures for themes if needed.
     fn ensure_textures(&mut self, ctx: &egui::Context) {
         let theme = self.config.theme.as_deref().unwrap_or("zircon");
-        
+
         if theme == "blanco" && self.texture_blanco.is_none() {
             let img = crate::texture_gen::generate_blanco_texture(4096, 4096);
-            self.texture_blanco = Some(ctx.load_texture("blanco_bg", img, egui::TextureOptions::LINEAR));
+            self.texture_blanco =
+                Some(ctx.load_texture("blanco_bg", img, egui::TextureOptions::LINEAR));
         } else if theme == "concrete" && self.texture_concrete.is_none() {
             let img = crate::texture_gen::generate_concrete_texture(4096, 4096);
-            self.texture_concrete = Some(ctx.load_texture("concrete_bg", img, egui::TextureOptions::LINEAR));
+            self.texture_concrete =
+                Some(ctx.load_texture("concrete_bg", img, egui::TextureOptions::LINEAR));
         } else if theme == "primordial" && self.texture_primordial.is_none() {
             let img = crate::texture_gen::generate_primordial_texture(4096, 4096);
-            self.texture_primordial = Some(ctx.load_texture("primordial_bg", img, egui::TextureOptions::LINEAR));
+            self.texture_primordial =
+                Some(ctx.load_texture("primordial_bg", img, egui::TextureOptions::LINEAR));
         }
     }
 
-    fn get_squircle_path(rect: egui::Rect, radius: f32, corner_style: &str, top_only: bool) -> Vec<egui::Pos2> {
+    fn get_squircle_path(
+        rect: egui::Rect,
+        radius: f32,
+        corner_style: &str,
+        top_only: bool,
+    ) -> Vec<egui::Pos2> {
         let n = if corner_style == "g2" { 3.5 } else { 5.0 };
         let steps = 16;
         let mut points = Vec::with_capacity(steps * 4);
 
-        let max_h = if top_only { rect.height() } else { rect.height() / 2.0 };
+        let max_h = if top_only {
+            rect.height()
+        } else {
+            rect.height() / 2.0
+        };
         let r = radius.min(rect.width() / 2.0).min(max_h);
-        
+
         let mut quadrant = Vec::with_capacity(steps + 1);
         for i in 0..=steps {
             let t = (i as f32 / steps as f32) * std::f32::consts::FRAC_PI_2;
@@ -313,12 +327,18 @@ impl BanquoApp {
 
         // Top-Left
         for v in &quadrant {
-            points.push(egui::pos2(rect.min.x + r - r * v.x, rect.min.y + r - r * v.y));
+            points.push(egui::pos2(
+                rect.min.x + r - r * v.x,
+                rect.min.y + r - r * v.y,
+            ));
         }
 
         // Top-Right
         for v in &quadrant {
-            points.push(egui::pos2(rect.max.x - r + r * v.y, rect.min.y + r - r * v.x));
+            points.push(egui::pos2(
+                rect.max.x - r + r * v.y,
+                rect.min.y + r - r * v.x,
+            ));
         }
 
         if top_only {
@@ -327,12 +347,18 @@ impl BanquoApp {
         } else {
             // Bottom-Right
             for v in &quadrant {
-                points.push(egui::pos2(rect.max.x - r + r * v.x, rect.max.y - r + r * v.y));
+                points.push(egui::pos2(
+                    rect.max.x - r + r * v.x,
+                    rect.max.y - r + r * v.y,
+                ));
             }
 
             // Bottom-Left
             for v in &quadrant {
-                points.push(egui::pos2(rect.min.x + r - r * v.y, rect.max.y - r + r * v.x));
+                points.push(egui::pos2(
+                    rect.min.x + r - r * v.y,
+                    rect.max.y - r + r * v.x,
+                ));
             }
         }
         points
@@ -368,12 +394,14 @@ impl App for BanquoApp {
 
         let mut rect = ui.max_rect();
         let painter = ui.painter();
-        
+
         // Background clear (fully transparent)
         painter.rect_filled(rect, 0.0, Color32::TRANSPARENT);
 
         // Command palette toggle (Ctrl+Shift+P)
-        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::P)) {
+        if ctx.input_mut(|i| {
+            i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::P)
+        }) {
             self.show_command_palette = !self.show_command_palette;
         }
 
@@ -381,7 +409,7 @@ impl App for BanquoApp {
         rect = rect.shrink(inset);
 
         let mut content_rect = rect;
-        
+
         // Push content area down by the height of the tab bar so text doesn't get clipped
         // by the rounded top corners. If the user sets this to 0.0, the text will draw
         // directly at the top of the window, and the auto-collapsing tab bar will overlay it.
@@ -393,22 +421,27 @@ impl App for BanquoApp {
         content_rect = content_rect.shrink(corner_padding);
 
         let theme = self.config.theme.as_deref().unwrap_or("zircon");
-        
+
         let (bg_fill, bg_texture) = match theme {
             "blanco" => (Color32::WHITE, self.texture_blanco.clone()),
-            "concrete" => (Color32::from_rgb(180, 180, 180), self.texture_concrete.clone()),
-            "primordial" => (Color32::from_black_alpha(204), self.texture_primordial.clone()),
-            "volcanic" | "volcanic glass" | "volcanic_glass" => (
-                Color32::from_rgba_unmultiplied(0, 0, 0, 200), 
-                None
+            "concrete" => (
+                Color32::from_rgb(180, 180, 180),
+                self.texture_concrete.clone(),
             ),
+            "primordial" => (
+                Color32::from_black_alpha(204),
+                self.texture_primordial.clone(),
+            ),
+            "volcanic" | "volcanic glass" | "volcanic_glass" => {
+                (Color32::from_rgba_unmultiplied(0, 0, 0, 200), None)
+            }
             _ => (Color32::from_black_alpha(142), None), // zircon with slightly more transparency
         };
 
         // Draw shape with slight inset to hide anti-aliasing halo under the stroke
         let bg_rect = rect.shrink(0.5);
         let bg_radius = (radius - 0.5).max(0.0);
-        
+
         let points = if corner_style == "square" || radius <= 0.0 {
             vec![
                 bg_rect.left_top(),
@@ -428,22 +461,38 @@ impl App for BanquoApp {
             let tex_size = tex.size();
             let tex_w = tex_size[0] as f32;
             let tex_h = tex_size[1] as f32;
-            
+
             // Draw textured polygon using a triangle fan Mesh
             let mut mesh = egui::epaint::Mesh::with_texture(tex.id());
             let center_idx = 0;
-            
-            let center_u = if is_reveal { (bg_rect.center().x - bg_rect.min.x) / tex_w } else { 0.5 };
-            let center_v = if is_reveal { (bg_rect.center().y - bg_rect.min.y) / tex_h } else { 0.5 };
-            
+
+            let center_u = if is_reveal {
+                (bg_rect.center().x - bg_rect.min.x) / tex_w
+            } else {
+                0.5
+            };
+            let center_v = if is_reveal {
+                (bg_rect.center().y - bg_rect.min.y) / tex_h
+            } else {
+                0.5
+            };
+
             mesh.vertices.push(egui::epaint::Vertex {
                 pos: bg_rect.center(),
                 uv: egui::pos2(center_u, center_v),
                 color: Color32::WHITE,
             });
             for p in &points {
-                let u = if is_reveal { (p.x - bg_rect.min.x) / tex_w } else { (p.x - bg_rect.min.x) / bg_rect.width() };
-                let v = if is_reveal { (p.y - bg_rect.min.y) / tex_h } else { (p.y - bg_rect.min.y) / bg_rect.height() };
+                let u = if is_reveal {
+                    (p.x - bg_rect.min.x) / tex_w
+                } else {
+                    (p.x - bg_rect.min.x) / bg_rect.width()
+                };
+                let v = if is_reveal {
+                    (p.y - bg_rect.min.y) / tex_h
+                } else {
+                    (p.y - bg_rect.min.y) / bg_rect.height()
+                };
                 mesh.vertices.push(egui::epaint::Vertex {
                     pos: *p,
                     uv: egui::pos2(u, v),
@@ -459,14 +508,19 @@ impl App for BanquoApp {
             painter.add(mesh);
         } else {
             // Solid color polygon
-            let shape = egui::epaint::PathShape::convex_polygon(points, bg_fill, egui::Stroke::NONE);
+            let shape =
+                egui::epaint::PathShape::convex_polygon(points, bg_fill, egui::Stroke::NONE);
             painter.add(shape);
         }
 
         // Apply Edge Styles
-        let rounding = egui::CornerRadius::same(if corner_style == "square" { 0 } else { radius as u8 });
+        let rounding = egui::CornerRadius::same(if corner_style == "square" {
+            0
+        } else {
+            radius as u8
+        });
         let stroke_kind = egui::StrokeKind::Inside;
-        
+
         let stroke_rect = |draw_rect: Rect, stroke: egui::Stroke| {
             if corner_style == "square" || radius <= 0.0 || corner_style == "g1" {
                 painter.rect_stroke(draw_rect, rounding, stroke, stroke_kind);
@@ -493,12 +547,21 @@ impl App for BanquoApp {
             stroke_rect(rect, egui::Stroke::new(1.5, Color32::from_black_alpha(200)));
             // Light inner border (creates bevel pop against dark app background)
             let inset_rect = rect.shrink(1.5);
-            stroke_rect(inset_rect, egui::Stroke::new(1.5, Color32::from_white_alpha(50)));
+            stroke_rect(
+                inset_rect,
+                egui::Stroke::new(1.5, Color32::from_white_alpha(50)),
+            );
         } else if edge_style == "3d" {
             // Chunky CRT bezel effect
             stroke_rect(rect, egui::Stroke::new(2.0, Color32::from_black_alpha(220)));
-            stroke_rect(rect.shrink(2.0), egui::Stroke::new(3.0, Color32::from_black_alpha(100)));
-            stroke_rect(rect.shrink(5.0), egui::Stroke::new(1.5, Color32::from_white_alpha(50)));
+            stroke_rect(
+                rect.shrink(2.0),
+                egui::Stroke::new(3.0, Color32::from_black_alpha(100)),
+            );
+            stroke_rect(
+                rect.shrink(5.0),
+                egui::Stroke::new(1.5, Color32::from_white_alpha(50)),
+            );
         }
 
         // --- IDLE DETECTION ---
@@ -509,21 +572,20 @@ impl App for BanquoApp {
                 self.last_mouse_pos = Some(pos);
             }
         }
-        
+
         let time_since_move = Instant::now().duration_since(self.last_mouse_move_time);
         let pointer_y = hover_pos.map(|p| p.y).unwrap_or(f32::MAX);
-        
+
         let persistent_tabs = self.config.ui.tab_bar_mode.as_deref() == Some("persistent");
         // Show tabs if persistent, or if mouse is within top 40px AND moved within the last 3 seconds
-        let show_tabs = persistent_tabs || (pointer_y <= 40.0 && time_since_move < Duration::from_secs(3));
+        let show_tabs =
+            persistent_tabs || (pointer_y <= 40.0 && time_since_move < Duration::from_secs(3));
 
         // --- OVERLAY DRAWING ---
         if show_tabs {
             let title_bar_height = 32.0;
-            let title_bar_rect = Rect::from_min_size(
-                rect.min,
-                Vec2::new(rect.width(), title_bar_height),
-            );
+            let title_bar_rect =
+                Rect::from_min_size(rect.min, Vec2::new(rect.width(), title_bar_height));
 
             // Draw over the grid using an egui::Area
             egui::Area::new("tab_bar_overlay".into())
@@ -532,7 +594,7 @@ impl App for BanquoApp {
                 .show(&ctx, |ui| {
                     // Paint background for tabs area with more transparency
                     let bg_color = Color32::from_rgba_unmultiplied(30, 28, 35, 160);
-                    
+
                     // Shrink slightly to hide AA halo under the stroke
                     let tab_bg_rect = title_bar_rect.shrink(0.5);
                     let tab_bg_radius = (radius - 0.5).max(0.0);
@@ -550,14 +612,23 @@ impl App for BanquoApp {
                         ui.painter().rect_filled(tab_bg_rect, rounding, bg_color);
                     } else {
                         // For G2/G3, use helper with top_only=true
-                        let points = Self::get_squircle_path(tab_bg_rect, tab_bg_radius, corner_style, true);
-                        let shape = egui::epaint::PathShape::convex_polygon(points, bg_color, egui::Stroke::NONE);
+                        let points =
+                            Self::get_squircle_path(tab_bg_rect, tab_bg_radius, corner_style, true);
+                        let shape = egui::epaint::PathShape::convex_polygon(
+                            points,
+                            bg_color,
+                            egui::Stroke::NONE,
+                        );
                         ui.painter().add(shape);
                     }
 
                     if !self.native_decorations {
                         // Drag to move
-                        let title_bar_response = ui.interact(title_bar_rect, ui.id().with("title_bar"), egui::Sense::click_and_drag());
+                        let title_bar_response = ui.interact(
+                            title_bar_rect,
+                            ui.id().with("title_bar"),
+                            egui::Sense::click_and_drag(),
+                        );
                         if title_bar_response.dragged() {
                             ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
                         }
@@ -568,16 +639,20 @@ impl App for BanquoApp {
                             egui::pos2(rect.max.x - close_button_size, rect.min.y),
                             Vec2::new(close_button_size, close_button_size),
                         );
-                        
-                        let close_response = ui.interact(close_rect, ui.id().with("close_btn"), egui::Sense::click());
-                        
+
+                        let close_response = ui.interact(
+                            close_rect,
+                            ui.id().with("close_btn"),
+                            egui::Sense::click(),
+                        );
+
                         // Draw close button (a simple X)
                         let cross_color = if close_response.hovered() {
                             Color32::WHITE
                         } else {
                             Color32::from_gray(128)
                         };
-                        
+
                         let stroke = egui::Stroke::new(1.5, cross_color);
                         let p1 = close_rect.center() - Vec2::new(4.0, 4.0);
                         let p2 = close_rect.center() + Vec2::new(4.0, 4.0);
@@ -595,21 +670,23 @@ impl App for BanquoApp {
                     let mut tab_x = rect.min.x + 8.0;
                     let tab_y = rect.min.y + 4.0; // Center 24px tab in 32px bar
                     let tab_h = 24.0;
-                    
+
                     let mut tab_to_close = None;
 
                     for i in 0..self.sessions.len() {
                         let tab_w = 140.0;
-                        let tab_rect = Rect::from_min_size(
-                            egui::pos2(tab_x, tab_y),
-                            Vec2::new(tab_w, tab_h)
+                        let tab_rect =
+                            Rect::from_min_size(egui::pos2(tab_x, tab_y), Vec2::new(tab_w, tab_h));
+
+                        let tab_resp = ui.interact(
+                            tab_rect,
+                            ui.id().with(format!("tab_{}", i)),
+                            egui::Sense::click(),
                         );
-                        
-                        let tab_resp = ui.interact(tab_rect, ui.id().with(format!("tab_{}", i)), egui::Sense::click());
                         if tab_resp.clicked() {
                             self.active_tab = i;
                         }
-                        
+
                         let bg_color = if i == self.active_tab {
                             Color32::from_rgba_premultiplied(80, 80, 90, 255)
                         } else if tab_resp.hovered() {
@@ -617,20 +694,28 @@ impl App for BanquoApp {
                         } else {
                             Color32::from_rgba_unmultiplied(40, 40, 65, 90)
                         };
-                        
+
                         ui.painter().rect_filled(tab_rect, 4.0, bg_color);
-                        
+
                         // Close button on the right edge of the tab
                         let close_rect = Rect::from_min_max(
                             egui::pos2(tab_rect.max.x - 24.0, tab_rect.min.y),
                             tab_rect.max,
                         );
-                        let close_resp = ui.interact(close_rect, ui.id().with(format!("tab_close_{}", i)), egui::Sense::click());
+                        let close_resp = ui.interact(
+                            close_rect,
+                            ui.id().with(format!("tab_close_{}", i)),
+                            egui::Sense::click(),
+                        );
                         if close_resp.clicked() {
                             tab_to_close = Some(i);
                         }
-                        
-                        let close_color = if close_resp.hovered() { Color32::WHITE } else { Color32::GRAY };
+
+                        let close_color = if close_resp.hovered() {
+                            Color32::WHITE
+                        } else {
+                            Color32::GRAY
+                        };
                         ui.painter().text(
                             close_rect.center(),
                             egui::Align2::CENTER_CENTER,
@@ -638,7 +723,7 @@ impl App for BanquoApp {
                             FontId::new(14.0, FontFamily::Name(crate::fonts::BANQUO_MONO.into())),
                             close_color,
                         );
-                        
+
                         // Dynamic Tab Title
                         let raw_title = self.sessions[i].title.lock().unwrap().clone();
                         let title_text = if raw_title.is_empty() {
@@ -648,41 +733,42 @@ impl App for BanquoApp {
                         } else {
                             raw_title
                         };
-                        
+
                         let title_rect = Rect::from_min_max(
                             tab_rect.min,
                             egui::pos2(tab_rect.max.x - 24.0, tab_rect.max.y),
                         );
-                        
+
                         ui.painter().text(
                             title_rect.center(),
                             egui::Align2::CENTER_CENTER,
                             title_text,
                             FontId::new(13.0, FontFamily::Name(crate::fonts::BANQUO_MONO.into())),
-                            if i == self.active_tab { Color32::WHITE } else { Color32::GRAY },
+                            if i == self.active_tab {
+                                Color32::WHITE
+                            } else {
+                                Color32::GRAY
+                            },
                         );
-                        
+
                         tab_x += tab_w + 4.0;
                     }
-                    
+
                     if let Some(i) = tab_to_close {
                         self.sessions.remove(i);
                         if self.sessions.is_empty() {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                             return; // Stop drawing to avoid out-of-bounds
-                        } else {
-                            if self.active_tab >= self.sessions.len() {
-                                self.active_tab = self.sessions.len() - 1;
-                            }
+                        } else if self.active_tab >= self.sessions.len() {
+                            self.active_tab = self.sessions.len() - 1;
                         }
                     }
-                    
+
                     // Add Tab Button
-                    let add_rect = Rect::from_min_size(
-                        egui::pos2(tab_x, tab_y),
-                        Vec2::new(24.0, tab_h)
-                    );
-                    let add_resp = ui.interact(add_rect, ui.id().with("add_tab_btn"), egui::Sense::click());
+                    let add_rect =
+                        Rect::from_min_size(egui::pos2(tab_x, tab_y), Vec2::new(24.0, tab_h));
+                    let add_resp =
+                        ui.interact(add_rect, ui.id().with("add_tab_btn"), egui::Sense::click());
                     if add_resp.clicked() {
                         if let Some((cols, rows)) = self.last_grid_size {
                             if let Ok(new_session) = crate::core::session::spawn(cols, rows) {
@@ -691,26 +777,50 @@ impl App for BanquoApp {
                             }
                         }
                     }
-                    
+
                     ui.painter().text(
                         add_rect.center(),
                         egui::Align2::CENTER_CENTER,
                         "+",
                         FontId::new(16.0, FontFamily::Name(crate::fonts::BANQUO_MONO.into())),
-                        if add_resp.hovered() { Color32::WHITE } else { Color32::GRAY },
+                        if add_resp.hovered() {
+                            Color32::WHITE
+                        } else {
+                            Color32::GRAY
+                        },
                     );
                 });
         }
 
-        // Resize borders (invisible edges) MUST ALWAYS be active, even when tabs are hidden, 
+        // Resize borders (invisible edges) MUST ALWAYS be active, even when tabs are hidden,
         // so you can resize the window at any time.
         if !self.native_decorations {
             let border = 6.0;
             let edges: [(egui::Align2, Vec2, egui::CursorIcon, egui::ViewportCommand); 4] = [
-                (egui::Align2::LEFT_TOP, Vec2::new(border, rect.height()), egui::CursorIcon::ResizeHorizontal, egui::ViewportCommand::BeginResize(egui::ResizeDirection::West)),
-                (egui::Align2::RIGHT_TOP, Vec2::new(border, rect.height()), egui::CursorIcon::ResizeHorizontal, egui::ViewportCommand::BeginResize(egui::ResizeDirection::East)),
-                (egui::Align2::LEFT_TOP, Vec2::new(rect.width(), border), egui::CursorIcon::ResizeVertical, egui::ViewportCommand::BeginResize(egui::ResizeDirection::North)),
-                (egui::Align2::LEFT_BOTTOM, Vec2::new(rect.width(), border), egui::CursorIcon::ResizeVertical, egui::ViewportCommand::BeginResize(egui::ResizeDirection::South)),
+                (
+                    egui::Align2::LEFT_TOP,
+                    Vec2::new(border, rect.height()),
+                    egui::CursorIcon::ResizeHorizontal,
+                    egui::ViewportCommand::BeginResize(egui::ResizeDirection::West),
+                ),
+                (
+                    egui::Align2::RIGHT_TOP,
+                    Vec2::new(border, rect.height()),
+                    egui::CursorIcon::ResizeHorizontal,
+                    egui::ViewportCommand::BeginResize(egui::ResizeDirection::East),
+                ),
+                (
+                    egui::Align2::LEFT_TOP,
+                    Vec2::new(rect.width(), border),
+                    egui::CursorIcon::ResizeVertical,
+                    egui::ViewportCommand::BeginResize(egui::ResizeDirection::North),
+                ),
+                (
+                    egui::Align2::LEFT_BOTTOM,
+                    Vec2::new(rect.width(), border),
+                    egui::CursorIcon::ResizeVertical,
+                    egui::ViewportCommand::BeginResize(egui::ResizeDirection::South),
+                ),
             ];
 
             for (align, size, cursor, cmd) in edges {
@@ -735,7 +845,8 @@ impl App for BanquoApp {
 
         if let Some(metrics) = self.cell_metrics {
             // Compute grid size and handle resize (T-110).
-            let (cols, rows) = metrics.grid_size(content_rect.width(), content_rect.height(), GRID_PADDING);
+            let (cols, rows) =
+                metrics.grid_size(content_rect.width(), content_rect.height(), GRID_PADDING);
 
             if self.last_grid_size != Some((cols, rows)) {
                 for session in &mut self.sessions {
@@ -744,8 +855,13 @@ impl App for BanquoApp {
                 self.last_grid_size = Some((cols, rows));
             }
 
-            let (offset_x, offset_y) =
-                metrics.centering_offset(content_rect.width(), content_rect.height(), GRID_PADDING, cols, rows);
+            let (offset_x, offset_y) = metrics.centering_offset(
+                content_rect.width(),
+                content_rect.height(),
+                GRID_PADDING,
+                cols,
+                rows,
+            );
             // Snap origin to physical pixel grid so every cell lands on
             // clean pixel boundaries (prevents sub-pixel gaps).
             let ppp = ctx.pixels_per_point();
@@ -794,12 +910,13 @@ impl App for BanquoApp {
                         // Glyph (skip spaces for performance).
                         if cell.ch != ' ' {
                             let mut fg = rgb_to_color32(cell.fg);
-                            
+
                             // Check if foreground is a light grayscale (default text color)
                             let r = fg.r() as i32;
                             let g = fg.g() as i32;
                             let b = fg.b() as i32;
-                            let is_default_text = (r - g).abs() < 20 && (r - b).abs() < 20 && r > 100;
+                            let is_default_text =
+                                (r - g).abs() < 20 && (r - b).abs() < 20 && r > 100;
                             let has_custom_bg = bg != DEFAULT_BG;
 
                             if is_concrete || is_blanco {
@@ -828,7 +945,7 @@ impl App for BanquoApp {
                                 fg,
                             );
                         }
-                        
+
                         current_x += cell_w;
                     }
                 }
@@ -844,35 +961,35 @@ impl App for BanquoApp {
             {
                 let mut cx = origin_x;
                 cx += snapshot.cursor.col as f32 * metrics.cell_w;
-                
+
                 let target_cy = origin_y + snapshot.cursor.row as f32 * metrics.cell_h;
                 let target_pos = egui::pos2(cx, target_cy);
-                
+
                 // Cursor Easing
                 let dt = ctx.input(|i| i.stable_dt).min(0.1);
                 let current_pos = self.smoothed_cursor_pos.unwrap_or(target_pos);
-                
+
                 // If it's a huge jump (e.g., cleared screen or changed tabs), snap immediately
                 let new_pos = if current_pos.distance(target_pos) > 400.0 {
                     target_pos
                 } else {
                     current_pos.lerp(target_pos, 1.0 - (-25.0 * dt).exp())
                 };
-                
+
                 self.smoothed_cursor_pos = Some(new_pos);
-                
+
                 // Keep requesting repaints until the cursor settles
                 if new_pos.distance(target_pos) > 0.5 {
                     ctx.request_repaint();
                 }
-                
-                let cursor_ch = snapshot.cell(snapshot.cursor.col, snapshot.cursor.row).map(|c| c.ch).unwrap_or(' ');
+
+                let cursor_ch = snapshot
+                    .cell(snapshot.cursor.col, snapshot.cursor.row)
+                    .map(|c| c.ch)
+                    .unwrap_or(' ');
                 let cursor_w = metrics.cell_w;
-                
-                let cursor_rect = Rect::from_min_size(
-                    new_pos,
-                    Vec2::new(cursor_w, metrics.cell_h),
-                );
+
+                let cursor_rect = Rect::from_min_size(new_pos, Vec2::new(cursor_w, metrics.cell_h));
                 painter.rect_filled(cursor_rect, 0.0, cursor_color);
 
                 // Paint the character under the cursor in the inverse color.
@@ -898,76 +1015,78 @@ impl App for BanquoApp {
         if !self.show_command_palette {
             let events: Vec<Event> = ctx.input(|i| i.events.clone());
             for event in &events {
-            match event {
-                Event::Text(text) => {
-                    let bytes = text.as_bytes();
-                    if let Ok(mut writer) = self.sessions[self.active_tab].writer.lock() {
-                        let _ = writer.write_all(bytes);
-                        let _ = writer.flush();
-                    }
-                }
-                Event::Key {
-                    key,
-                    pressed: true,
-                    modifiers,
-                    ..
-                } => {
-                    // Check for tab management shortcuts
-                    if modifiers.ctrl && modifiers.shift {
-                        if *key == Key::T {
-                            // Spawn new tab
-                            if let Some((cols, rows)) = self.last_grid_size {
-                                if let Ok(new_session) = crate::core::session::spawn(cols, rows) {
-                                    self.sessions.push(new_session);
-                                    self.active_tab = self.sessions.len() - 1;
-                                }
-                            }
-                            continue;
-                        } else if *key == Key::W {
-                            // Close current tab
-                            self.sessions.remove(self.active_tab);
-                            if self.sessions.is_empty() {
-                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                                return;
-                            }
-                            if self.active_tab >= self.sessions.len() {
-                                self.active_tab = self.sessions.len() - 1;
-                            }
-                            continue;
-                        }
-                    }
-
-                    // Don't double-send printable text that was already handled
-                    // by Event::Text. Only encode special/control keys here.
-                    let is_special = matches!(
-                        key,
-                        Key::Enter
-                            | Key::Backspace
-                            | Key::Tab
-                            | Key::Escape
-                            | Key::ArrowUp
-                            | Key::ArrowDown
-                            | Key::ArrowLeft
-                            | Key::ArrowRight
-                            | Key::Home
-                            | Key::End
-                            | Key::Delete
-                            | Key::PageUp
-                            | Key::PageDown
-                    );
-                    let is_ctrl_letter = modifiers.ctrl && key_to_letter(*key).is_some();
-
-                    if is_special || is_ctrl_letter {
-                        if let Some(bytes) = encode_key(*key, *modifiers, "") {
-                            let mut writer = self.sessions[self.active_tab].writer.lock().unwrap();
-                            let _ = writer.write_all(&bytes);
+                match event {
+                    Event::Text(text) => {
+                        let bytes = text.as_bytes();
+                        if let Ok(mut writer) = self.sessions[self.active_tab].writer.lock() {
+                            let _ = writer.write_all(bytes);
                             let _ = writer.flush();
                         }
                     }
+                    Event::Key {
+                        key,
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } => {
+                        // Check for tab management shortcuts
+                        if modifiers.ctrl && modifiers.shift {
+                            if *key == Key::T {
+                                // Spawn new tab
+                                if let Some((cols, rows)) = self.last_grid_size {
+                                    if let Ok(new_session) = crate::core::session::spawn(cols, rows)
+                                    {
+                                        self.sessions.push(new_session);
+                                        self.active_tab = self.sessions.len() - 1;
+                                    }
+                                }
+                                continue;
+                            } else if *key == Key::W {
+                                // Close current tab
+                                self.sessions.remove(self.active_tab);
+                                if self.sessions.is_empty() {
+                                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                                    return;
+                                }
+                                if self.active_tab >= self.sessions.len() {
+                                    self.active_tab = self.sessions.len() - 1;
+                                }
+                                continue;
+                            }
+                        }
+
+                        // Don't double-send printable text that was already handled
+                        // by Event::Text. Only encode special/control keys here.
+                        let is_special = matches!(
+                            key,
+                            Key::Enter
+                                | Key::Backspace
+                                | Key::Tab
+                                | Key::Escape
+                                | Key::ArrowUp
+                                | Key::ArrowDown
+                                | Key::ArrowLeft
+                                | Key::ArrowRight
+                                | Key::Home
+                                | Key::End
+                                | Key::Delete
+                                | Key::PageUp
+                                | Key::PageDown
+                        );
+                        let is_ctrl_letter = modifiers.ctrl && key_to_letter(*key).is_some();
+
+                        if is_special || is_ctrl_letter {
+                            if let Some(bytes) = encode_key(*key, *modifiers, "") {
+                                let mut writer =
+                                    self.sessions[self.active_tab].writer.lock().unwrap();
+                                let _ = writer.write_all(&bytes);
+                                let _ = writer.flush();
+                            }
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
-        }
         } // end of if !show_command_palette
 
         // Keep frames flowing while the terminal is active.
@@ -977,26 +1096,29 @@ impl App for BanquoApp {
         if self.show_command_palette {
             let overlay_rect = ui.max_rect();
             // Draw a frosted semi-transparent background
-            ui.painter().rect_filled(overlay_rect, 0.0, Color32::from_black_alpha(150));
-            
+            ui.painter()
+                .rect_filled(overlay_rect, 0.0, Color32::from_black_alpha(150));
+
             let palette_w = 400.0;
             let palette_h = 40.0;
-            let palette_rect = Rect::from_center_size(overlay_rect.center(), Vec2::new(palette_w, palette_h));
-            
+            let palette_rect =
+                Rect::from_center_size(overlay_rect.center(), Vec2::new(palette_w, palette_h));
+
             ui.scope_builder(egui::UiBuilder::new().max_rect(palette_rect), |ui| {
-                ui.painter().rect_filled(palette_rect, 8.0, Color32::from_rgb(30, 30, 35));
+                ui.painter()
+                    .rect_filled(palette_rect, 8.0, Color32::from_rgb(30, 30, 35));
                 let response = ui.add(
                     egui::TextEdit::singleline(&mut self.palette_input)
                         .font(egui::TextStyle::Monospace)
                         .desired_width(palette_w)
-                        .margin(egui::vec2(10.0, 10.0))
+                        .margin(egui::vec2(10.0, 10.0)),
                 );
                 response.request_focus();
-                
+
                 if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     // execute command
                     let cmd = self.palette_input.clone();
-                    let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
+                    let parts: Vec<&str> = cmd.split_whitespace().collect();
                     if !parts.is_empty() {
                         match parts[0] {
                             "theme" if parts.len() > 1 => {
@@ -1005,7 +1127,9 @@ impl App for BanquoApp {
                                 let theme_path = std::path::Path::new("configs")
                                     .join(format!("{}.toml", theme_name));
                                 if let Ok(content) = std::fs::read_to_string(&theme_path) {
-                                    if let Ok(cfg) = toml::from_str::<crate::config::BanquoConfig>(&content) {
+                                    if let Ok(cfg) =
+                                        toml::from_str::<crate::config::BanquoConfig>(&content)
+                                    {
                                         self.config = cfg;
                                     } else {
                                         // TOML parsed but failed — just set the name
@@ -1028,7 +1152,7 @@ impl App for BanquoApp {
                     self.palette_input.clear();
                     self.show_command_palette = false;
                 }
-                
+
                 if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                     self.show_command_palette = false;
                 }
@@ -1153,11 +1277,9 @@ mod tests {
 
     #[test]
     fn test_transparency_invariants() {
+        // The framebuffer clears fully transparent; the visible field is now
+        // theme/procedural (the old hardcoded FLAT_FIELD constant was removed),
+        // so the only carry-forward invariant is the zero-alpha clear color.
         assert_eq!(CLEAR_COLOR, [0.0, 0.0, 0.0, 0.0]);
-        assert!(
-            FLAT_FIELD.a() >= 230,
-            "flat field must be near-opaque (alpha {} of 255)",
-            FLAT_FIELD.a()
-        );
     }
 }

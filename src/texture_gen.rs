@@ -1,14 +1,15 @@
 use rand::RngExt;
 
 pub fn generate_blanco_texture(width: usize, height: usize) -> egui::ColorImage {
-    let mut img = egui::ColorImage::new([width, height], vec![egui::Color32::WHITE; width * height]);
+    let mut img =
+        egui::ColorImage::new([width, height], vec![egui::Color32::WHITE; width * height]);
     let mut rng = rand::rng();
 
     // Base dots - more scarce
     for _ in 0..(width * height / 4000) {
         let x = rng.random_range(0..width);
         let y = rng.random_range(0..height);
-        
+
         let size = rng.random_range(1..=2); // smaller dots
         for dy in 0..size {
             for dx in 0..size {
@@ -30,13 +31,13 @@ pub fn generate_concrete_texture(width: usize, height: usize) -> egui::ColorImag
     for _ in 0..(width * height / 3000) {
         let x = rng.random_range(0..width);
         let y = rng.random_range(0..height);
-        
+
         let size = rng.random_range(1..=2); // smaller dots
         let color_choice = rng.random_range(0..3);
         let color = match color_choice {
-            0 => egui::Color32::from_rgb(40, 40, 40),     // Blackish
-            1 => egui::Color32::from_rgb(200, 120, 60),   // Orange/Rust
-            _ => egui::Color32::from_rgb(120, 90, 70),    // Brown
+            0 => egui::Color32::from_rgb(40, 40, 40),   // Blackish
+            1 => egui::Color32::from_rgb(200, 120, 60), // Orange/Rust
+            _ => egui::Color32::from_rgb(120, 90, 70),  // Brown
         };
 
         for dy in 0..size {
@@ -47,7 +48,7 @@ pub fn generate_concrete_texture(width: usize, height: usize) -> egui::ColorImag
             }
         }
     }
-    
+
     // Add subtle noise to the base gray to give it texture
     for pixel in img.pixels.iter_mut() {
         if *pixel == base_color {
@@ -56,7 +57,7 @@ pub fn generate_concrete_texture(width: usize, height: usize) -> egui::ColorImag
             *pixel = egui::Color32::from_rgb(r, r, r);
         }
     }
-    
+
     img
 }
 
@@ -70,7 +71,7 @@ pub fn generate_primordial_texture(width: usize, height: usize) -> egui::ColorIm
     for _ in 0..(width * height / 4000) {
         let x = rng.random_range(0..width);
         let y = rng.random_range(0..height);
-        
+
         let size = rng.random_range(1..=2); // smaller dots
         let color = egui::Color32::from_rgba_premultiplied(255, 0, 0, 204); // Red matching 80% alpha
 

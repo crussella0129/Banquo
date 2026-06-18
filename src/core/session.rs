@@ -73,7 +73,8 @@ pub fn spawn(cols: usize, rows: usize) -> anyhow::Result<SessionHandle> {
 
     let writer_arc = Arc::new(std::sync::Mutex::new(pty.writer));
     let title_arc = Arc::new(std::sync::Mutex::new(String::new()));
-    let listener = super::term::BanquoListener::new(Arc::clone(&writer_arc), Arc::clone(&title_arc));
+    let listener =
+        super::term::BanquoListener::new(Arc::clone(&writer_arc), Arc::clone(&title_arc));
     let term = BanquoTerm::new(cols, rows, listener);
     let term = Arc::new(std::sync::Mutex::new(term));
 

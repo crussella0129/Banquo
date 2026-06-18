@@ -183,11 +183,7 @@ impl BanquoTerm {
 
         let config = TermConfig::default();
 
-        let term = alacritty_terminal::term::Term::new(
-            config,
-            &dims,
-            listener,
-        );
+        let term = alacritty_terminal::term::Term::new(config, &dims, listener);
         Self {
             term: Arc::new(FairMutex::new(term)),
             processor: Processor::new(),

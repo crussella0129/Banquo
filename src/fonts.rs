@@ -7,9 +7,9 @@
 //! window). The [`crate::app`] Face installs the result up front, in its
 //! constructor, before the first frame.
 
-use std::sync::Arc;
-use std::fs;
 use egui::{FontData, FontDefinitions, FontFamily};
+use std::fs;
+use std::sync::Arc;
 
 /// The family name Banquo registers for its monospace face. Callers paint with
 /// `FontFamily::Name(BANQUO_MONO.into())`; it always resolves (to Geist Mono when
@@ -21,7 +21,7 @@ pub const BANQUO_SYMBOLS: &str = "banquo-symbols";
 ///
 /// Honesty over silent fallback (design guarantee #6): the choice is a value the
 /// Face can report, not a hidden state. `Embedded` = the vendored default was
-/// registered; `UserPath` = the user's config file loaded successfully; 
+/// registered; `UserPath` = the user's config file loaded successfully;
 /// `Fallback` = no face was supplied and egui's built-in monospace stands in.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FontSource {
@@ -56,7 +56,7 @@ fn load_font(
             Arc::new(FontData::from_owned(bytes)),
         );
         let mut fallbacks = vec![family_name.to_owned()];
-        
+
         // Ensure default fallbacks are preserved so that emojis and symbols render
         // properly if the user-selected font lacks them!
         if is_monospace {
@@ -68,11 +68,9 @@ fn load_font(
                 }
             }
         }
-        
-        defs.families.insert(
-            FontFamily::Name(family_name.into()),
-            fallbacks,
-        );
+
+        defs.families
+            .insert(FontFamily::Name(family_name.into()), fallbacks);
         if is_monospace {
             // Promote to lead the default Monospace family
             defs.families
@@ -100,12 +98,7 @@ pub fn build_fonts(config: &crate::config::BanquoConfig) -> (FontDefinitions, Fo
     let mut defs = FontDefinitions::default();
 
     // Mono
-    let mono_source = load_font(
-        &mut defs,
-        BANQUO_MONO,
-        &config.fonts.monospace_path,
-        true,
-    );
+    let mono_source = load_font(&mut defs, BANQUO_MONO, &config.fonts.monospace_path, true);
 
     // Symbols (Font Fallback)
     // If a symbols_path is provided, we load it. Otherwise we fallback to the
@@ -124,19 +117,18 @@ pub fn build_fonts(config: &crate::config::BanquoConfig) -> (FontDefinitions, Fo
         if let Some(default_mono) = defs.families.get(&FontFamily::Monospace) {
             fallbacks.extend(default_mono.iter().cloned());
         }
-        defs.families.insert(
-            FontFamily::Name(BANQUO_SYMBOLS.into()),
-            fallbacks,
-        );
+        defs.families
+            .insert(FontFamily::Name(BANQUO_SYMBOLS.into()), fallbacks);
     }
 
-    // Force all UI proportional fonts to use our monospace font instead, 
+    // Force all UI proportional fonts to use our monospace font instead,
     // ensuring the entire app is strictly monospace.
     let mut mono_fallbacks = vec![BANQUO_MONO.to_owned()];
     if let Some(default_mono) = defs.families.get(&FontFamily::Monospace) {
         mono_fallbacks.extend(default_mono.iter().cloned());
     }
-    defs.families.insert(FontFamily::Proportional, mono_fallbacks);
+    defs.families
+        .insert(FontFamily::Proportional, mono_fallbacks);
 
     (defs, mono_source)
 }

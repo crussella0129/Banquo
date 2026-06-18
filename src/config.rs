@@ -29,6 +29,8 @@ pub struct WindowAppearanceConfig {
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct UiConfig {
     pub tab_bar_mode: Option<String>,
+    pub top_margin: Option<f32>,
+    pub background_mode: Option<String>,
 }
 
 impl Default for WindowAppearanceConfig {
@@ -47,6 +49,9 @@ pub struct FontConfig {
     pub monospace_path: Option<String>,
     pub ui_path: Option<String>,
     pub serif_path: Option<String>,
+    pub symbols_path: Option<String>,
+    pub offset_x: Option<f32>,
+    pub offset_y: Option<f32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]

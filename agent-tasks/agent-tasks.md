@@ -1,5 +1,1 @@
-- [ ] Add `window.blur` to `src/config.rs`
-- [ ] Add `clap` and `window-vibrancy` to `Cargo.toml`
-- [ ] Implement `banquo compose` CLI routing in `src/main.rs`
-- [ ] Apply `window_vibrancy::apply_acrylic/mica` in `src/app.rs`
-- [ ] Adjust Tab Bar alpha values for translucency
+# Sprint 10 Tasks

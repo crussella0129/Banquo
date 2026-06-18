@@ -16,20 +16,19 @@ use std::time::{Instant, Duration};
 
 use crate::core::session::SessionHandle;
 use crate::core::snapshot::{Rgb, Snapshot};
-use crate::fonts::{build_fonts, FontSource, BANQUO_MONO};
+use crate::fonts::{build_fonts, FontSource, BANQUO_MONO, BANQUO_SYMBOLS};
 use crate::metrics::CellMetrics;
 
 /// The framebuffer clear color: fully transparent (M1 carry-forward).
 pub const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
 
-/// The flat field (Layer 0/1 of §V, collapsed for M2): warm near-black tint.
-const FLAT_FIELD: Color32 = Color32::from_rgba_premultiplied(16, 14, 19, 180);
+// Constants kept for potential future use or documentation
+// const FLAT_FIELD: Color32 = Color32::from_rgba_premultiplied(16, 14, 19, 180);
 
-/// Default background (matches the flat field's RGB).
+/// Default background
 const DEFAULT_BG: Color32 = Color32::from_rgb(0, 0, 0);
 
-/// Cursor color — a visible block.
-const CURSOR_COLOR: Color32 = Color32::from_rgba_premultiplied(235, 232, 226, 180);
+// const CURSOR_COLOR: Color32 = Color32::from_rgba_premultiplied(235, 232, 226, 180);
 
 /// Grid padding in logical pixels.
 const GRID_PADDING: f32 = 4.0;
@@ -46,6 +45,20 @@ fn rgb_to_color32(rgb: Rgb) -> Color32 {
 /// The monospace font for the grid.
 fn mono_font() -> FontId {
     FontId::new(MONO_SIZE, FontFamily::Name(BANQUO_MONO.into()))
+}
+
+/// The symbol font for block drawing characters, dynamically scaled.
+fn symbols_font(symbols_size: f32) -> FontId {
+    FontId::new(symbols_size, FontFamily::Name(BANQUO_SYMBOLS.into()))
+}
+
+/// Select the appropriate font for a character (symbol mapping).
+fn font_for_char(ch: char, symbols_size: f32) -> FontId {
+    if ch >= '\u{2500}' && ch <= '\u{259F}' {
+        symbols_font(symbols_size)
+    } else {
+        mono_font()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -142,6 +155,8 @@ pub struct BanquoApp {
     active_tab: usize,
     /// Cell metrics derived from the monospace font.
     cell_metrics: Option<CellMetrics>,
+    /// Scaled font size for symbols to perfectly match cell width.
+    symbols_size: f32,
     /// Last-sent grid size — only send a resize when this changes.
     last_grid_size: Option<(usize, usize)>,
     /// Whether the app is using native OS decorations (true) or custom chrome (false).
@@ -164,6 +179,7 @@ pub struct BanquoApp {
     // Cached theme textures
     texture_blanco: Option<egui::TextureHandle>,
     texture_concrete: Option<egui::TextureHandle>,
+    texture_primordial: Option<egui::TextureHandle>,
 }
 
 impl BanquoApp {
@@ -181,6 +197,7 @@ impl BanquoApp {
             sessions: vec![session],
             active_tab: 0,
             cell_metrics: None,
+            symbols_size: MONO_SIZE,
             last_grid_size: None,
             native_decorations,
             last_mouse_pos: None,
@@ -192,6 +209,7 @@ impl BanquoApp {
             smoothed_cursor_pos: None,
             texture_blanco: None,
             texture_concrete: None,
+            texture_primordial: None,
         }
     }
 
@@ -204,17 +222,56 @@ impl BanquoApp {
     /// Lazily compute cell metrics from the egui font system. We do this on
     /// the first frame because font metrics aren't available until after
     /// `set_fonts` + one layout pass.
+    ///
+    /// Both cell_w and cell_h are snapped (ceiled) to physical pixel boundaries.
+    /// Without this, fractional cell dimensions (e.g. 17.3px) cause row/column
+    /// positions to alternate between pixel boundaries, creating 1px gaps on
+    /// every other row. This is the same approach used by Alacritty, Windows
+    /// Terminal, and Konsole.
     fn ensure_metrics(&mut self, ctx: &egui::Context) {
         if self.cell_metrics.is_some() {
             return;
         }
 
-        let font = mono_font();
+        let font_text = mono_font();
+        // Measure symbols at base size to find the scale ratio
+        let font_blocks = symbols_font(MONO_SIZE);
+        let ppp = ctx.pixels_per_point();
+        
+        let offset_x = self.config.fonts.offset_x.unwrap_or(0.0);
+        let offset_y = self.config.fonts.offset_y.unwrap_or(0.0);
+        
         ctx.fonts_mut(|fonts| {
-            let layout = fonts.layout_no_wrap("M".to_string(), font.clone(), Color32::WHITE);
-            if !layout.rows.is_empty() {
-                let cell_w = layout.rect.width();
-                let cell_h = layout.rows[0].height();
+            let layout_m = fonts.layout_no_wrap("M".to_string(), font_text.clone(), Color32::WHITE);
+            let layout_block = fonts.layout_no_wrap("█".to_string(), font_blocks.clone(), Color32::WHITE);
+            
+            if !layout_m.rows.is_empty() && !layout_block.rows.is_empty() {
+                let text_w = layout_m.rect.width();
+                let text_h = layout_m.rows[0].height();
+                
+                let raw_w = text_w + offset_x;
+                let raw_h = text_h + offset_y;
+                
+                // Snap grid to physical pixel grid: ceil ensures cells never
+                // under-size.
+                let cell_w = (raw_w * ppp).ceil() / ppp;
+                let cell_h = (raw_h * ppp).ceil() / ppp;
+                
+                let block_w = layout_block.rect.width();
+                let block_h = layout_block.rect.height();
+                
+                // Scale the symbols font so its block character fills both
+                // the cell width AND cell height. We take the max of both
+                // ratios, and add a tiny epsilon (1%) to ensure overlapping,
+                // which guarantees zero gaps for adjacent box-drawing glyphs!
+                let scale_x = if block_w > 0.0 { cell_w / block_w } else { 1.0 };
+                let scale_y = if block_h > 0.0 { cell_h / block_h } else { 1.0 };
+                let scale = scale_x.max(scale_y) * 1.01;
+                
+                self.symbols_size = MONO_SIZE * scale;
+                
+                eprintln!("banquo: metrics: text_w={text_w} text_h={text_h} cell_w={cell_w} cell_h={cell_h} scale={scale}");
+                
                 if cell_w > 0.0 && cell_h > 0.0 {
                     self.cell_metrics = Some(CellMetrics::new(cell_w, cell_h));
                 }
@@ -232,6 +289,9 @@ impl BanquoApp {
         } else if theme == "concrete" && self.texture_concrete.is_none() {
             let img = crate::texture_gen::generate_concrete_texture(4096, 4096);
             self.texture_concrete = Some(ctx.load_texture("concrete_bg", img, egui::TextureOptions::LINEAR));
+        } else if theme == "primordial" && self.texture_primordial.is_none() {
+            let img = crate::texture_gen::generate_primordial_texture(4096, 4096);
+            self.texture_primordial = Some(ctx.load_texture("primordial_bg", img, egui::TextureOptions::LINEAR));
         }
     }
 
@@ -323,8 +383,10 @@ impl App for BanquoApp {
         let mut content_rect = rect;
         
         // Push content area down by the height of the tab bar so text doesn't get clipped
-        // by the rounded top corners, and so the auto-collapsing tab bar doesn't cover text.
-        content_rect.min.y += 32.0;
+        // by the rounded top corners. If the user sets this to 0.0, the text will draw
+        // directly at the top of the window, and the auto-collapsing tab bar will overlay it.
+        let top_margin = self.config.ui.top_margin.unwrap_or(32.0);
+        content_rect.min.y += top_margin;
 
         // Pad the content area so terminal grid doesn't collide with the rounded borders
         let corner_padding = (radius / 2.0).max(8.0);
@@ -335,6 +397,7 @@ impl App for BanquoApp {
         let (bg_fill, bg_texture) = match theme {
             "blanco" => (Color32::WHITE, self.texture_blanco.clone()),
             "concrete" => (Color32::from_rgb(180, 180, 180), self.texture_concrete.clone()),
+            "primordial" => (Color32::from_black_alpha(204), self.texture_primordial.clone()),
             "volcanic" | "volcanic glass" | "volcanic_glass" => (
                 Color32::from_rgba_unmultiplied(0, 0, 0, 200), 
                 None
@@ -361,17 +424,26 @@ impl App for BanquoApp {
         };
 
         if let Some(tex) = bg_texture {
+            let is_reveal = self.config.ui.background_mode.as_deref() == Some("reveal");
+            let tex_size = tex.size();
+            let tex_w = tex_size[0] as f32;
+            let tex_h = tex_size[1] as f32;
+            
             // Draw textured polygon using a triangle fan Mesh
             let mut mesh = egui::epaint::Mesh::with_texture(tex.id());
             let center_idx = 0;
+            
+            let center_u = if is_reveal { (bg_rect.center().x - bg_rect.min.x) / tex_w } else { 0.5 };
+            let center_v = if is_reveal { (bg_rect.center().y - bg_rect.min.y) / tex_h } else { 0.5 };
+            
             mesh.vertices.push(egui::epaint::Vertex {
                 pos: bg_rect.center(),
-                uv: egui::pos2(0.5, 0.5),
+                uv: egui::pos2(center_u, center_v),
                 color: Color32::WHITE,
             });
             for p in &points {
-                let u = (p.x - bg_rect.min.x) / bg_rect.width();
-                let v = (p.y - bg_rect.min.y) / bg_rect.height();
+                let u = if is_reveal { (p.x - bg_rect.min.x) / tex_w } else { (p.x - bg_rect.min.x) / bg_rect.width() };
+                let v = if is_reveal { (p.y - bg_rect.min.y) / tex_h } else { (p.y - bg_rect.min.y) / bg_rect.height() };
                 mesh.vertices.push(egui::epaint::Vertex {
                     pos: *p,
                     uv: egui::pos2(u, v),
@@ -395,7 +467,7 @@ impl App for BanquoApp {
         let rounding = egui::CornerRadius::same(if corner_style == "square" { 0 } else { radius as u8 });
         let stroke_kind = egui::StrokeKind::Inside;
         
-        let mut stroke_rect = |draw_rect: Rect, stroke: egui::Stroke| {
+        let stroke_rect = |draw_rect: Rect, stroke: egui::Stroke| {
             if corner_style == "square" || radius <= 0.0 || corner_style == "g1" {
                 painter.rect_stroke(draw_rect, rounding, stroke, stroke_kind);
             } else {
@@ -674,19 +746,25 @@ impl App for BanquoApp {
 
             let (offset_x, offset_y) =
                 metrics.centering_offset(content_rect.width(), content_rect.height(), GRID_PADDING, cols, rows);
-            let origin_x = content_rect.min.x + offset_x;
-            let origin_y = content_rect.min.y + offset_y;
+            // Snap origin to physical pixel grid so every cell lands on
+            // clean pixel boundaries (prevents sub-pixel gaps).
+            let ppp = ctx.pixels_per_point();
+            let origin_x = ((content_rect.min.x + offset_x) * ppp).round() / ppp;
+            let origin_y = ((content_rect.min.y + offset_y) * ppp).round() / ppp;
 
             let theme = self.config.theme.as_deref().unwrap_or("zircon");
             let is_volcanic = matches!(theme, "volcanic" | "volcanic glass" | "volcanic_glass");
             let is_concrete = theme == "concrete";
             let is_blanco = theme == "blanco";
-            let px_offset = 1.0 / ctx.pixels_per_point();
+            let is_primordial = theme == "primordial";
+            let _px_offset = 1.0 / ctx.pixels_per_point();
 
             let cursor_color = if is_concrete {
                 Color32::from_rgba_premultiplied(70, 70, 75, 180)
             } else if is_volcanic {
                 Color32::from_rgba_premultiplied(180, 15, 15, 180)
+            } else if is_primordial {
+                Color32::from_rgba_premultiplied(160, 40, 200, 180)
             } else {
                 Color32::from_rgba_premultiplied(235, 232, 226, 180)
             };
@@ -695,21 +773,13 @@ impl App for BanquoApp {
             let paint_cols = cols.min(snapshot.cols);
             let paint_rows = rows.min(snapshot.rows);
 
-            let is_auto = self.config.grid.mode.as_deref() == Some("auto");
-
             for row in 0..paint_rows {
                 let mut current_x = origin_x;
                 for col in 0..paint_cols {
                     if let Some(cell) = snapshot.cell(col, row) {
-                        let cell_w = if is_auto {
-                            let galley = painter.layout_no_wrap(cell.ch.to_string(), mono_font(), Color32::WHITE);
-                            galley.rect.width().max(1.0)
-                        } else {
-                            metrics.cell_w
-                        };
+                        let cell_w = metrics.cell_w;
                         let x = current_x;
                         let y = origin_y + row as f32 * metrics.cell_h;
-
                         let cell_rect = Rect::from_min_size(
                             egui::pos2(x, y),
                             Vec2::new(cell_w, metrics.cell_h),
@@ -743,13 +813,18 @@ impl App for BanquoApp {
                                 if is_default_text && !has_custom_bg {
                                     fg = Color32::from_rgb(200, 10, 10); // True blood red, highly saturated
                                 }
+                            } else if is_primordial {
+                                // Map light grayscale (default text) to purple plasma
+                                if is_default_text && !has_custom_bg {
+                                    fg = Color32::from_rgb(160, 40, 200);
+                                }
                             }
 
                             painter.text(
                                 egui::pos2(x, y),
                                 egui::Align2::LEFT_TOP,
                                 cell.ch,
-                                mono_font(),
+                                font_for_char(cell.ch, self.symbols_size),
                                 fg,
                             );
                         }
@@ -768,15 +843,7 @@ impl App for BanquoApp {
                 && snapshot.cursor.row < paint_rows
             {
                 let mut cx = origin_x;
-                if is_auto {
-                    for col in 0..snapshot.cursor.col {
-                        let ch = snapshot.cell(col, snapshot.cursor.row).map(|c| c.ch).unwrap_or(' ');
-                        let galley = painter.layout_no_wrap(ch.to_string(), mono_font(), Color32::WHITE);
-                        cx += galley.rect.width().max(1.0);
-                    }
-                } else {
-                    cx += snapshot.cursor.col as f32 * metrics.cell_w;
-                }
+                cx += snapshot.cursor.col as f32 * metrics.cell_w;
                 
                 let target_cy = origin_y + snapshot.cursor.row as f32 * metrics.cell_h;
                 let target_pos = egui::pos2(cx, target_cy);
@@ -800,12 +867,7 @@ impl App for BanquoApp {
                 }
                 
                 let cursor_ch = snapshot.cell(snapshot.cursor.col, snapshot.cursor.row).map(|c| c.ch).unwrap_or(' ');
-                let cursor_w = if is_auto {
-                    let galley = painter.layout_no_wrap(cursor_ch.to_string(), mono_font(), Color32::WHITE);
-                    galley.rect.width().max(4.0) // minimum width for cursor on spaces
-                } else {
-                    metrics.cell_w
-                };
+                let cursor_w = metrics.cell_w;
                 
                 let cursor_rect = Rect::from_min_size(
                     new_pos,
@@ -825,7 +887,7 @@ impl App for BanquoApp {
                         new_pos,
                         egui::Align2::LEFT_TOP,
                         cursor_ch,
-                        mono_font(),
+                        font_for_char(cursor_ch, self.symbols_size),
                         inverse_fg,
                     );
                 }
@@ -921,7 +983,7 @@ impl App for BanquoApp {
             let palette_h = 40.0;
             let palette_rect = Rect::from_center_size(overlay_rect.center(), Vec2::new(palette_w, palette_h));
             
-            ui.allocate_ui_at_rect(palette_rect, |ui| {
+            ui.scope_builder(egui::UiBuilder::new().max_rect(palette_rect), |ui| {
                 ui.painter().rect_filled(palette_rect, 8.0, Color32::from_rgb(30, 30, 35));
                 let response = ui.add(
                     egui::TextEdit::singleline(&mut self.palette_input)
@@ -938,8 +1000,27 @@ impl App for BanquoApp {
                     if !parts.is_empty() {
                         match parts[0] {
                             "theme" if parts.len() > 1 => {
-                                self.config.theme = Some(parts[1].to_string());
+                                let theme_name = parts[1];
+                                // Try to load the full theme config from configs/<name>.toml
+                                let theme_path = std::path::Path::new("configs")
+                                    .join(format!("{}.toml", theme_name));
+                                if let Ok(content) = std::fs::read_to_string(&theme_path) {
+                                    if let Ok(cfg) = toml::from_str::<crate::config::BanquoConfig>(&content) {
+                                        self.config = cfg;
+                                    } else {
+                                        // TOML parsed but failed — just set the name
+                                        self.config.theme = Some(theme_name.to_string());
+                                    }
+                                } else {
+                                    // No preset file found — just set the name
+                                    self.config.theme = Some(theme_name.to_string());
+                                }
                                 let _ = self.config.save();
+                                // Force font rebuild on next frame
+                                let (defs, font_source) = build_fonts(&self.config);
+                                ctx.set_fonts(defs);
+                                self.font_source = font_source;
+                                self.cell_metrics = None;
                             }
                             _ => {}
                         }

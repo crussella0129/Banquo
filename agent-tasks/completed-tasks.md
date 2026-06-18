@@ -112,3 +112,11 @@
 - Implemented exponential mathematical easing for organic cursor interpolation.
 - Fixed passthrough bugs preventing `egui` typing from sending keystrokes to the active terminal.
 - Completed: 2026-06-17
+- [x] Edit $env:APPDATA\banquo\banquo.toml to add ackground_mode = "reveal".
+- [x] Delete ssets/fonts/Geist-Regular.ttf and ssets/fonts/geist/.
+- [x] Refactor src/fonts.rs to remove proportional fonts and map UI fonts to BANQUO_MONO.
+- [x] Refine 	exture_gen.rs dot sizes and scarcity.
+- [x] Add generate_primordial_texture to 	exture_gen.rs.
+- [x] Update pp.rs state and rendering for primordial.
+- [x] Create configs/primordial.toml.
+- [x] Update recipe card artifact.

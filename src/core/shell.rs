@@ -97,6 +97,26 @@ mod tests {
         assert!(resolve_shell(&cfg, Some("zsh")).is_none());
     }
 
+    // --- Integration: config → resolve → command (no process spawned) ---
+
+    #[test]
+    fn test_config_to_command_pipeline() {
+        use std::ffi::OsString;
+        let cfg = cfg_with(Some("pwsh"), vec![profile("pwsh", "pwsh.exe")]);
+        let resolved = resolve_shell(&cfg, None).expect("default resolves");
+        let cmd = resolved.to_command();
+        // The whole chain lands on pwsh.exe as argv[0].
+        assert_eq!(cmd.get_argv()[0], OsString::from("pwsh.exe"));
+    }
+
+    #[test]
+    fn test_unconfigured_preserves_default_prog() {
+        // Empty ShellConfig → resolve_shell returns None, i.e. open_pty(.., None)
+        // takes the new_default_prog path (the no-behavior-change contract).
+        let cfg = BanquoConfig::default();
+        assert!(resolve_shell(&cfg, None).is_none());
+    }
+
     #[test]
     fn test_resolve_maps_args_cwd_env() {
         let mut env = BTreeMap::new();

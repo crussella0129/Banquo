@@ -162,3 +162,9 @@
 - **Completed:** 2026-06-18T00:00:00Z
 - **Files modified:** src/app.rs, src/main.rs, src/core/shell.rs
 - **Commit:** `5f444d2`
+
+## T-1107 (sprint 11) — command-palette `shell <name>` verb
+- **Description:** Added a `shell <name>` arm to the palette dispatch: opens a new tab running the named shell. Resolution prefers a configured profile, then falls back to `os::detect_shells()` lookup by name — so `shell pwsh`/`shell wsl` work with **zero configuration**. Unknown name → safe no-op (palette closes, no panic). Made `shell::profile_to_resolved` pub for the fallback conversion; removed the remaining `#[allow(dead_code)]` on `detect_shells`/`detect_in` (now consumed). 36+4 tests pass.
+- **Completed:** 2026-06-18T00:00:00Z
+- **Files modified:** src/app.rs, src/core/shell.rs, src/os/mod.rs
+- **Commit:** `8861b15`

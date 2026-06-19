@@ -11,7 +11,7 @@ use crate::config::{BanquoConfig, ShellProfile};
 use crate::core::pty::ResolvedShell;
 
 /// Convert a configured [`ShellProfile`] into a spawnable [`ResolvedShell`].
-fn profile_to_resolved(p: &ShellProfile) -> ResolvedShell {
+pub fn profile_to_resolved(p: &ShellProfile) -> ResolvedShell {
     ResolvedShell {
         prog: p.command.clone(),
         args: p.args.clone(),

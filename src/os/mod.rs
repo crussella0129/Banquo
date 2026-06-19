@@ -105,8 +105,6 @@ fn candidate_to_profile(c: &ShellCandidate) -> ShellProfile {
 /// Takes an explicit path list (no ambient state) so it is unit-testable.
 /// Always returns a non-empty list — falls back to [`fallback_profile`] when
 /// nothing is found.
-// `#[allow(dead_code)]`: surfaced to the UI/config defaults starting in T-1106.
-#[allow(dead_code)]
 pub fn detect_in(paths: &[PathBuf]) -> Vec<ShellProfile> {
     let mut found: Vec<ShellProfile> = candidates()
         .iter()
@@ -120,7 +118,6 @@ pub fn detect_in(paths: &[PathBuf]) -> Vec<ShellProfile> {
 }
 
 /// Probe the ambient `PATH` for known shells.
-#[allow(dead_code)]
 pub fn detect_shells() -> Vec<ShellProfile> {
     let paths: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|p| std::env::split_paths(&p).collect())

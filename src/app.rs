@@ -1160,6 +1160,33 @@ impl App for BanquoApp {
                                 self.font_source = font_source;
                                 self.cell_metrics = None;
                             }
+                            "shell" if parts.len() > 1 => {
+                                // Open a new tab running the named shell. Prefer a
+                                // configured profile; otherwise fall back to a
+                                // shell detected on PATH — so `shell pwsh` works
+                                // even with zero configuration. Unknown → no-op.
+                                let name = parts[1];
+                                let resolved =
+                                    crate::core::shell::resolve_shell(&self.config, Some(name))
+                                        .or_else(|| {
+                                            crate::os::detect_shells()
+                                                .into_iter()
+                                                .find(|p| p.name == name)
+                                                .map(|p| {
+                                                    crate::core::shell::profile_to_resolved(&p)
+                                                })
+                                        });
+                                if let (Some(shell), Some((cols, rows))) =
+                                    (resolved, self.last_grid_size)
+                                {
+                                    if let Ok(new_session) =
+                                        crate::core::session::spawn(cols, rows, Some(shell))
+                                    {
+                                        self.sessions.push(new_session);
+                                        self.active_tab = self.sessions.len() - 1;
+                                    }
+                                }
+                            }
                             _ => {}
                         }
                     }

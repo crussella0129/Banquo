@@ -168,3 +168,9 @@
 - **Completed:** 2026-06-18T00:00:00Z
 - **Files modified:** src/app.rs, src/core/shell.rs, src/os/mod.rs
 - **Commit:** `8861b15`
+
+## T-1108 (sprint 11) — windows_subsystem release attribute
+- **Description:** Added `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]` to main.rs so release `banquo.exe` launches with no console window; debug keeps the console for `eprintln!`. Verified: debug gate clean + 36/4 tests pass, `cargo build --release` succeeds. The "no console flash" confirmation is the manual E2E checkpoint at Loop (no headless test).
+- **Completed:** 2026-06-18T00:00:00Z
+- **Files modified:** src/main.rs
+- **Commit:** `5044ac2`

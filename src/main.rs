@@ -1,4 +1,9 @@
 #![forbid(unsafe_code)]
+// Release builds are GUI-subsystem apps: launching `banquo.exe` directly opens
+// no console window (Banquo is a real standalone terminal, not a child of one).
+// Debug builds keep the console so `eprintln!` diagnostics stay visible.
+// Hosting ConPTY from a GUI-subsystem process is the norm (WezTerm/Alacritty).
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 //! Banquo — a most beautiful terminal.
 //!
 //! ## The truth/appearance seam (design §I, §IV)

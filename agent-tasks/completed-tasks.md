@@ -156,3 +156,9 @@
 - **Completed:** 2026-06-18T00:00:00Z
 - **Files modified:** src/core/pty.rs, src/core/session.rs, src/main.rs, src/app.rs
 - **Commit:** `fe66557`
+
+## T-1106 (sprint 11) — wire startup + new-tab to configured default
+- **Description:** Added `default_shell: Option<ResolvedShell>` to `BanquoApp`, resolved once in `new()` via `resolve_shell(&config, None)` and refreshed on config hot-reload. main.rs now loads config *before* the startup spawn and launches the configured default; both new-tab sites (`+` button, Ctrl+Shift+T) spawn `self.default_shell.clone()`. Removed the `#[allow(dead_code)]` on `resolve_shell`. No config → OS default (unchanged). 36+4 tests pass.
+- **Completed:** 2026-06-18T00:00:00Z
+- **Files modified:** src/app.rs, src/main.rs, src/core/shell.rs
+- **Commit:** `5f444d2`

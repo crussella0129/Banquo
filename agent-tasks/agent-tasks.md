@@ -1,6 +1,5 @@
 # Agent Tasks (Persistent Backlog)
 
-- [ ] T-1106 (sprint 11): Wire main.rs startup + all app.rs new-tab sites to resolved default stored on BanquoApp — touches: src/main.rs, src/app.rs
 - [ ] T-1107 (sprint 11): Command-palette `shell <name>` verb (new tab w/ profile; unknown = safe no-op) — touches: src/app.rs
 - [ ] T-1108 (sprint 11): Add #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] — touches: src/main.rs
 - [ ] T-1109 (sprint 11): install.ps1 — release build + copy + shortcut (abort on build failure) — touches: install.ps1 (new)

@@ -165,6 +165,9 @@ pub struct BanquoApp {
     config: crate::config::BanquoConfig,
     /// Channel to receive hot-reloaded configs.
     config_rx: std::sync::mpsc::Receiver<crate::config::BanquoConfig>,
+    /// The resolved default shell (from `config.shell.default`); `None` → OS
+    /// default. New tabs spawn this; refreshed on config hot-reload.
+    default_shell: Option<crate::core::pty::ResolvedShell>,
 
     // Command Palette state
     show_command_palette: bool,
@@ -194,6 +197,9 @@ impl BanquoApp {
         let (config_tx, config_rx) = std::sync::mpsc::channel();
         crate::config::BanquoConfig::watch(config_tx);
 
+        // Resolve the configured default shell once (borrows config before move).
+        let default_shell = crate::core::shell::resolve_shell(&config, None);
+
         Self {
             font_source,
             sessions: vec![session],
@@ -206,6 +212,7 @@ impl BanquoApp {
             last_mouse_move_time: Instant::now(),
             config,
             config_rx,
+            default_shell,
             show_command_palette: false,
             palette_input: String::new(),
             smoothed_cursor_pos: None,
@@ -379,6 +386,8 @@ impl App for BanquoApp {
             ctx.set_fonts(defs);
             self.font_source = font_source;
             self.cell_metrics = None; // Force metrics recompute on font change
+                                      // Re-resolve the default shell so future tabs honor the new config.
+            self.default_shell = crate::core::shell::resolve_shell(&self.config, None);
             ctx.request_repaint();
         }
 
@@ -771,7 +780,9 @@ impl App for BanquoApp {
                         ui.interact(add_rect, ui.id().with("add_tab_btn"), egui::Sense::click());
                     if add_resp.clicked() {
                         if let Some((cols, rows)) = self.last_grid_size {
-                            if let Ok(new_session) = crate::core::session::spawn(cols, rows, None) {
+                            if let Ok(new_session) =
+                                crate::core::session::spawn(cols, rows, self.default_shell.clone())
+                            {
                                 self.sessions.push(new_session);
                                 self.active_tab = self.sessions.len() - 1;
                             }
@@ -1034,9 +1045,11 @@ impl App for BanquoApp {
                             if *key == Key::T {
                                 // Spawn new tab
                                 if let Some((cols, rows)) = self.last_grid_size {
-                                    if let Ok(new_session) =
-                                        crate::core::session::spawn(cols, rows, None)
-                                    {
+                                    if let Ok(new_session) = crate::core::session::spawn(
+                                        cols,
+                                        rows,
+                                        self.default_shell.clone(),
+                                    ) {
                                         self.sessions.push(new_session);
                                         self.active_tab = self.sessions.len() - 1;
                                     }

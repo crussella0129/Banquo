@@ -60,10 +60,15 @@ fn main() -> Result<(), eframe::Error> {
         return Ok(());
     }
 
+    // Load config first so the startup session can honor the configured shell.
+    let config = config::BanquoConfig::load();
+    let default_shell = core::shell::resolve_shell(&config, None);
+
     // Spawn the terminal session (PTY + reader thread + snapshot publisher)
     // before the window opens. Initial size = 80×24 (corrected on first resize
     // when the Face knows the actual panel dimensions).
-    let session = core::session::spawn(80, 24, None).expect("failed to spawn terminal session");
+    let session =
+        core::session::spawn(80, 24, default_shell).expect("failed to spawn terminal session");
 
     // For Banquo, we use a custom frameless window globally to allow custom edge/corner drawing.
     let native_decorations = false;
@@ -78,8 +83,6 @@ fn main() -> Result<(), eframe::Error> {
             .with_min_inner_size([420.0, 180.0]),
         ..Default::default()
     };
-
-    let config = config::BanquoConfig::load();
 
     eframe::run_native(
         "Banquo",

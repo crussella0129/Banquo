@@ -33,8 +33,6 @@ fn profile_to_resolved(p: &ShellProfile) -> ResolvedShell {
 /// requested name, or no configured default). `None` means "use the OS default
 /// program" for the startup path, and "do nothing" for an explicit palette
 /// request — the caller decides.
-// `#[allow(dead_code)]`: first called by the startup/new-tab wiring in T-1106.
-#[allow(dead_code)]
 pub fn resolve_shell(config: &BanquoConfig, name: Option<&str>) -> Option<ResolvedShell> {
     let target = match name {
         Some(n) => n,

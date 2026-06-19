@@ -186,3 +186,9 @@
 - **Completed:** 2026-06-18T00:00:00Z
 - **Files modified:** README.md, decisions.md
 - **Commit:** `60a8733`
+
+## T-1111 (sprint 11) — CI remediation (pre-existing Linux failures)
+- **Description:** Loop-phase CI verify exposed that `main` had been red on ubuntu across multiple prior pushes — unrelated to sprint 11. Two pre-existing root causes: (1) `eframe { default-features = false }` dropped winit's Linux x11/wayland backends → `compile_error!("...not supported by winit")`; re-enabled `x11`+`wayland` features + matching apt deps. (2) `os::apply_window_effects` left `config`/`frame` unused when the `#[cfg(windows)]` call compiled out → `-D warnings` failure (only reachable once the build was fixed). Verified the full Linux build/clippy/test green via WSL (`CARGO_TARGET_DIR=/tmp/banquo-linux-target`) before pushing. **CI now green on ubuntu + windows** (run 27810160906, HEAD 10c47d4).
+- **Completed:** 2026-06-19T00:00:00Z
+- **Files modified:** Cargo.toml, Cargo.lock, .github/workflows/ci.yml, src/os/mod.rs
+- **Commit:** `4f94cf8` + `10c47d4`

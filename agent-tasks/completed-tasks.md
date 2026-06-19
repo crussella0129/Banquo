@@ -138,3 +138,9 @@
 - **Completed:** 2026-06-18T00:00:00Z
 - **Files modified:** src/core/pty.rs
 - **Commit:** `2fdd850`
+
+## T-1103 (sprint 11) — resolve_shell resolver
+- **Description:** New `src/core/shell.rs` with pure `resolve_shell(config, name) -> Option<ResolvedShell>` (+ private `profile_to_resolved`). `Some(name)` selects that profile; `None` selects `config.shell.default`; unknown/unset → `None` (caller uses `new_default_prog`/no-op). Registered `pub mod shell` in core/mod.rs. Temporary `#[allow(dead_code)]` until T-1106 wires it. 4 unit tests (named, default, fallback-None, args/cwd/env mapping).
+- **Completed:** 2026-06-18T00:00:00Z
+- **Files modified:** src/core/shell.rs, src/core/mod.rs
+- **Commit:** `790f81f`

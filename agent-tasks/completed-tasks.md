@@ -174,3 +174,9 @@
 - **Completed:** 2026-06-18T00:00:00Z
 - **Files modified:** src/main.rs
 - **Commit:** `5044ac2`
+
+## T-1109 (sprint 11) — install.ps1
+- **Description:** Added `install.ps1`: builds `cargo build --release` (aborts the whole install if the build fails or the exe is missing), copies `banquo.exe` to `%LOCALAPPDATA%\Banquo`, and creates a Start-menu shortcut via `WScript.Shell` (no unsafe code). Optional `-Desktop` and `-AddToPath` switches. Verified it parses via the PowerShell AST parser (PARSE OK). Ends the cargo-run-from-repo dance.
+- **Completed:** 2026-06-18T00:00:00Z
+- **Files modified:** install.ps1
+- **Commit:** `a7e0f0c`

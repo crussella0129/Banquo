@@ -63,7 +63,7 @@ fn main() -> Result<(), eframe::Error> {
     // Spawn the terminal session (PTY + reader thread + snapshot publisher)
     // before the window opens. Initial size = 80×24 (corrected on first resize
     // when the Face knows the actual panel dimensions).
-    let session = core::session::spawn(80, 24).expect("failed to spawn terminal session");
+    let session = core::session::spawn(80, 24, None).expect("failed to spawn terminal session");
 
     // For Banquo, we use a custom frameless window globally to allow custom edge/corner drawing.
     let native_decorations = false;

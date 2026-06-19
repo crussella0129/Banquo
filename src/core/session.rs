@@ -65,11 +65,16 @@ impl SessionHandle {
 
 /// Spawn a terminal session: PTY + reader thread + snapshot publisher.
 ///
-/// Returns a [`SessionHandle`] on success, or an error if the PTY can't be
-/// opened. The reader thread runs until the PTY reader returns EOF (shell
-/// exits) or the process is killed.
-pub fn spawn(cols: usize, rows: usize) -> anyhow::Result<SessionHandle> {
-    let pty = super::pty::open_pty(cols as u16, rows as u16)?;
+/// `shell` selects which program to launch; `None` uses the OS default shell
+/// (pre-sprint-11 behavior). Returns a [`SessionHandle`] on success, or an
+/// error if the PTY can't be opened. The reader thread runs until the PTY
+/// reader returns EOF (shell exits) or the process is killed.
+pub fn spawn(
+    cols: usize,
+    rows: usize,
+    shell: Option<super::pty::ResolvedShell>,
+) -> anyhow::Result<SessionHandle> {
+    let pty = super::pty::open_pty(cols as u16, rows as u16, shell.as_ref())?;
 
     let writer_arc = Arc::new(std::sync::Mutex::new(pty.writer));
     let title_arc = Arc::new(std::sync::Mutex::new(String::new()));

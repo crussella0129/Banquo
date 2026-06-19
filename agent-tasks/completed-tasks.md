@@ -150,3 +150,9 @@
 - **Completed:** 2026-06-18T00:00:00Z
 - **Files modified:** src/os/mod.rs
 - **Commit:** `d0d637c`
+
+## T-1105 (sprint 11) — open_pty/spawn accept a shell
+- **Description:** `open_pty(cols, rows, shell: Option<&ResolvedShell>)` and `session::spawn(.., shell: Option<ResolvedShell>)` now build the `CommandBuilder` from the resolved shell, falling back to `new_default_prog()` on `None`. All three existing spawn sites (main.rs:66, app.rs `+`-button, app.rs Ctrl+Shift+T) pass `None` here — behavior unchanged; T-1106 swaps in real resolution. Removed the temporary `#[allow(dead_code)]` on `ResolvedShell`/`to_command` (now consumed). 36+4 tests pass.
+- **Completed:** 2026-06-18T00:00:00Z
+- **Files modified:** src/core/pty.rs, src/core/session.rs, src/main.rs, src/app.rs
+- **Commit:** `fe66557`

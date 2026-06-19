@@ -14,9 +14,6 @@ use std::io::{Read, Write};
 /// by the resolver from a configured `ShellProfile` (or synthesized for the OS
 /// default). Keeping it a plain struct lets the resolution logic be unit-tested
 /// without ever spawning a process.
-// `#[allow(dead_code)]`: consumed by `resolve_shell` (T-1103) and `open_pty`
-// (T-1105); the allow is removed once those land. Exercised now by unit tests.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ResolvedShell {
     /// The program to launch (becomes `argv[0]`).
@@ -29,7 +26,6 @@ pub struct ResolvedShell {
     pub env: Vec<(String, String)>,
 }
 
-#[allow(dead_code)]
 impl ResolvedShell {
     /// Build a `portable_pty::CommandBuilder` from this spec.
     ///
@@ -63,12 +59,15 @@ pub struct PtyHandle {
     pub child: Box<dyn portable_pty::Child + Send + Sync>,
 }
 
-/// Spawn the default shell on a PTY of the given dimensions.
+/// Spawn a shell on a PTY of the given dimensions.
 ///
-/// Returns a [`PtyHandle`] with reader, writer, master (for resize), and the
-/// child process. Returns `Err` if the PTY cannot be opened or the shell
-/// cannot be spawned (no panic — the caller decides how to report it).
-pub fn open_pty(cols: u16, rows: u16) -> anyhow::Result<PtyHandle> {
+/// When `shell` is `Some`, that resolved profile is launched; when `None`,
+/// Banquo falls back to the OS default program (`new_default_prog`) — the
+/// pre-sprint-11 behavior. Returns a [`PtyHandle`] with reader, writer, master
+/// (for resize), and the child process. Returns `Err` if the PTY cannot be
+/// opened or the shell cannot be spawned (no panic — the caller decides how to
+/// report it).
+pub fn open_pty(cols: u16, rows: u16, shell: Option<&ResolvedShell>) -> anyhow::Result<PtyHandle> {
     let pty_system = native_pty_system();
 
     let pair = pty_system.openpty(PtySize {
@@ -78,7 +77,10 @@ pub fn open_pty(cols: u16, rows: u16) -> anyhow::Result<PtyHandle> {
         pixel_height: 0,
     })?;
 
-    let mut cmd = CommandBuilder::new_default_prog();
+    let mut cmd = match shell {
+        Some(s) => s.to_command(),
+        None => CommandBuilder::new_default_prog(),
+    };
 
     // Explicitly announce UTF-8 / TrueColor support to shells and tools
     cmd.env("TERM", "xterm-256color");

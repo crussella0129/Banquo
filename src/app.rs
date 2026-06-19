@@ -771,7 +771,7 @@ impl App for BanquoApp {
                         ui.interact(add_rect, ui.id().with("add_tab_btn"), egui::Sense::click());
                     if add_resp.clicked() {
                         if let Some((cols, rows)) = self.last_grid_size {
-                            if let Ok(new_session) = crate::core::session::spawn(cols, rows) {
+                            if let Ok(new_session) = crate::core::session::spawn(cols, rows, None) {
                                 self.sessions.push(new_session);
                                 self.active_tab = self.sessions.len() - 1;
                             }
@@ -1034,7 +1034,8 @@ impl App for BanquoApp {
                             if *key == Key::T {
                                 // Spawn new tab
                                 if let Some((cols, rows)) = self.last_grid_size {
-                                    if let Ok(new_session) = crate::core::session::spawn(cols, rows)
+                                    if let Ok(new_session) =
+                                        crate::core::session::spawn(cols, rows, None)
                                     {
                                         self.sessions.push(new_session);
                                         self.active_tab = self.sessions.len() - 1;

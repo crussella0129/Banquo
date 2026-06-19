@@ -126,3 +126,9 @@
 - **Completed:** 2026-06-18T00:00:00Z
 - **Files modified:** src/app.rs, .gitignore
 - **Commit:** `dbdc3f7`
+
+## T-1101 (sprint 11) — Shell config schema
+- **Description:** Added `ShellConfig { default, profiles }` and `ShellProfile { name, command, args, cwd, env }` to config.rs and wired `shell` into `BanquoConfig` with `#[serde(default)]`. `env` is a `BTreeMap` for idiomatic TOML tables + deterministic ordering. 3 unit tests (deserialize, defaults-when-absent, args-default-empty).
+- **Completed:** 2026-06-18T00:00:00Z
+- **Files modified:** src/config.rs
+- **Commit:** `ff7566f`

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -16,6 +17,38 @@ pub struct BanquoConfig {
     pub window: WindowAppearanceConfig,
     #[serde(default)]
     pub ui: UiConfig,
+    #[serde(default)]
+    pub shell: ShellConfig,
+}
+
+/// Which shells Banquo can launch and which one is the default.
+///
+/// A *shell* is just a child process the PTY runs (`cmd.exe`, `pwsh.exe`,
+/// `bash`, `wsl.exe`…). When this is empty Banquo falls back to the OS default
+/// program (`new_default_prog`) — exactly the pre-sprint-11 behavior.
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub struct ShellConfig {
+    /// Name of the profile to launch by default. `None` → OS default shell.
+    pub default: Option<String>,
+    /// Available named shell profiles.
+    #[serde(default)]
+    pub profiles: Vec<ShellProfile>,
+}
+
+/// A single named, launchable shell definition.
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub struct ShellProfile {
+    /// The name used to select this profile (e.g. `"pwsh"`).
+    pub name: String,
+    /// The program to launch (e.g. `"pwsh.exe"`, `"wsl.exe"`).
+    pub command: String,
+    /// Arguments passed to the program.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Working directory to start in (inherits Banquo's cwd when `None`).
+    pub cwd: Option<String>,
+    /// Extra environment variables to set for this shell.
+    pub env: Option<BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -173,5 +206,55 @@ impl BanquoConfig {
                 }
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_shell_config_deserializes() {
+        let toml_src = r#"
+[shell]
+default = "pwsh"
+
+[[shell.profiles]]
+name = "pwsh"
+command = "pwsh.exe"
+args = ["-NoLogo"]
+
+[[shell.profiles]]
+name = "wsl"
+command = "wsl.exe"
+"#;
+        let cfg: BanquoConfig = toml::from_str(toml_src).expect("valid TOML");
+        assert_eq!(cfg.shell.default.as_deref(), Some("pwsh"));
+        assert_eq!(cfg.shell.profiles.len(), 2);
+        assert_eq!(cfg.shell.profiles[0].name, "pwsh");
+        assert_eq!(cfg.shell.profiles[0].command, "pwsh.exe");
+        assert_eq!(cfg.shell.profiles[0].args, vec!["-NoLogo".to_string()]);
+    }
+
+    #[test]
+    fn test_shell_config_defaults_when_absent() {
+        // A config with no [shell] table must still parse, with an empty default.
+        let cfg: BanquoConfig = toml::from_str("theme = \"blanco\"").expect("valid TOML");
+        assert!(cfg.shell.default.is_none());
+        assert!(cfg.shell.profiles.is_empty());
+    }
+
+    #[test]
+    fn test_shell_profile_args_default_empty() {
+        let toml_src = r#"
+[[shell.profiles]]
+name = "cmd"
+command = "cmd.exe"
+"#;
+        let cfg: BanquoConfig = toml::from_str(toml_src).expect("valid TOML");
+        let p = &cfg.shell.profiles[0];
+        assert!(p.args.is_empty());
+        assert!(p.cwd.is_none());
+        assert!(p.env.is_none());
     }
 }

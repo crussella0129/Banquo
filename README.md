@@ -57,6 +57,14 @@ Banquo is a real terminal — install it once and launch it like any other app, 
 
 Then launch **Banquo** from the Start menu (or type `banquo` in any shell if you used `-AddToPath`). A borderless window opens on a true PTY (ConPTY on Windows, `openpty` on Unix). Type `ls`, `vim`, or `htop` — the parser + grid core handles full SGR colors, alt-screen, and cursor addressing.
 
+> **Don't use `cargo run` to "use" Banquo.** `cargo run` launches the *debug*
+> build as a child of your shell and **blocks it** — close that shell and Banquo
+> closes too. That's the dev loop, not the product. The installed/release binary
+> (`target\release\banquo.exe`, or the Start-menu shortcut) is a standalone GUI
+> process: it has **no console window** and is **independent of any shell** —
+> closing the terminal you launched it from does not affect it. If you ever see
+> Banquo die when a shell closes, you launched the debug build via `cargo run`.
+
 ### Choose your shell
 
 Banquo runs **any shell on your machine** — PowerShell, cmd, bash, zsh, or WSL — not a single hardcoded one. Two ways to pick:

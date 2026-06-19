@@ -150,12 +150,12 @@ mod tests {
         std::fs::write(dir.join(exe), b"").unwrap();
 
         let result = detect_in(std::slice::from_ref(&dir));
-        let names: Vec<&str> = result.iter().map(|p| p.name.as_str()).collect();
+        let names: Vec<String> = result.iter().map(|p| p.name.clone()).collect();
+        // Clean up before asserting so a failure doesn't leak the temp dir.
+        std::fs::remove_dir_all(&dir).ok();
         assert!(
-            names.contains(&expected),
+            names.iter().any(|n| n == expected),
             "expected `{expected}` in {names:?}"
         );
-
-        std::fs::remove_dir_all(&dir).ok();
     }
 }

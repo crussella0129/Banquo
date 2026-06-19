@@ -110,6 +110,14 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_default_is_deterministic() {
+        // The T-1106 contract: the default stored on BanquoApp is the SAME for
+        // the startup tab and every new tab. Resolving twice must be equal.
+        let cfg = cfg_with(Some("pwsh"), vec![profile("pwsh", "pwsh.exe")]);
+        assert_eq!(resolve_shell(&cfg, None), resolve_shell(&cfg, None));
+    }
+
+    #[test]
     fn test_unconfigured_preserves_default_prog() {
         // Empty ShellConfig → resolve_shell returns None, i.e. open_pty(.., None)
         // takes the new_default_prog path (the no-behavior-change contract).

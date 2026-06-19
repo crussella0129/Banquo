@@ -137,5 +137,25 @@ mod tests {
         };
         let cmd = shell.to_command();
         assert!(cmd.get_cwd().is_none());
+        // env-omission: with no profile env, our marker var is absent.
+        assert!(cmd.get_env("BANQUO_TEST_VAR").is_none());
+    }
+
+    #[test]
+    fn test_into_command_populates_cwd_env() {
+        // The populated path must actually reach the CommandBuilder (guards the
+        // `cmd.cwd(..)` branch and the `for (k,v) in &self.env` loop).
+        let shell = ResolvedShell {
+            prog: "wsl.exe".to_string(),
+            args: vec![],
+            cwd: Some("C:/work".to_string()),
+            env: vec![("BANQUO_TEST_VAR".to_string(), "1".to_string())],
+        };
+        let cmd = shell.to_command();
+        assert_eq!(cmd.get_cwd(), Some(&OsString::from("C:/work")));
+        assert_eq!(
+            cmd.get_env("BANQUO_TEST_VAR"),
+            Some(OsString::from("1").as_os_str())
+        );
     }
 }

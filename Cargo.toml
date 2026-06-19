@@ -29,6 +29,11 @@ members = [
 eframe = { version = "0.34", default-features = false, features = [
     "wgpu",
     "default_fonts",
+    # Linux windowing backends. Without these, disabling eframe's default
+    # features drops winit's x11/wayland support and the Linux build fails with
+    # `compile_error!("...not supported by winit")`. No-ops on Windows/macOS.
+    "x11",
+    "wayland",
 ] }
 # egui is re-exported by eframe, but Banquo references egui types directly
 # (FontDefinitions, ViewportBuilder, …), so declare it at the same minor version

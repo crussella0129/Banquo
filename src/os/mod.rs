@@ -6,7 +6,9 @@ use std::path::PathBuf;
 pub fn apply_window_effects(config: &crate::config::BanquoConfig, frame: &mut eframe::Frame) {
     #[cfg(target_os = "windows")]
     windows::apply_effects(config, frame);
-    // Ignore on other OSes for now
+    // Window effects are Windows-only for now; the args are unused elsewhere.
+    #[cfg(not(target_os = "windows"))]
+    let _ = (config, frame);
 }
 
 /// A shell Banquo knows how to look for on `PATH`.

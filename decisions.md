@@ -5,6 +5,23 @@ future work; later sprints' "ignored-ADR" review screens against this log.
 
 ---
 
+## 2026-06-18 — ADR-011: Shell pluggability + standalone launch; default-terminal handoff and elevation deferred — *Accepted* (sprint 11)
+
+**Context.** Banquo was a complete terminal *emulator* but felt parasitic on another terminal: it spawned exactly one hardcoded shell (`CommandBuilder::new_default_prog()` → cmd.exe on Windows / `$SHELL` on Unix) with no chooser, and the only run path was `cargo run` from the repo, whose parent console stayed attached because the binary was compiled console-subsystem. Users wanted to pick PowerShell/bash/zsh/WSL and to launch Banquo as a real standalone app.
+
+**Decision.**
+1. **Shell as data, resolved at the spawn boundary only.** A `ShellConfig { default, profiles }` (config) resolves through a pure `resolve_shell` into a `ResolvedShell { prog, args, cwd, env }` (in `core::pty`), consumed by `open_pty(.., Option<&ResolvedShell>)`. `None` preserves the exact pre-sprint-11 `new_default_prog()` behavior. The parser (`BanquoTerm`) is untouched — it is shell-agnostic (ADR-004). The default is stored on `BanquoApp` and refreshed on config hot-reload.
+2. **Detection, not configuration, is the default UX.** `os::detect_shells()` probes `PATH` for known shells (Windows: pwsh/powershell/cmd/bash/wsl; Unix: bash/zsh/sh) with a guaranteed non-empty fallback. The palette verb `shell <name>` opens a tab on a detected shell, so it works with zero config. WSL is one `wsl.exe` profile; per-distro enumeration is deferred (avoids the `wsl.exe -l -q` UTF-16LE parsing hazard — detection never spawns).
+3. **Standalone launch via subsystem switch.** `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]` makes release builds GUI-subsystem (no console window); debug keeps the console for `eprintln!`. `install.ps1` builds release, copies `banquo.exe`, and makes a Start-menu shortcut. Hosting ConPTY from a GUI-subsystem process is the norm (WezTerm/Alacritty).
+
+**Deferred (researched, out of sprint 11):**
+- **Windows 11 default-terminal handoff** (`DelegationConsole`/`DelegationTerminal` + COM/conhost handoff) — would make Explorer-launched consoles open *inside* Banquo, but needs the `windows` crate (tension with ADR-002 `#![forbid(unsafe_code)]`) and rewires *every* console launch system-wide (irreversible). Its own milestone.
+- **ADR-009's elevated-launch (`runas`) + shield indicator** — elevation needs ShellExecute-verb launching that risks the forbid-unsafe boundary; deferred with the handoff. The PowerShell *profile* itself ships now; only the elevated variant waits.
+
+**Consequences.** Any installed shell is reachable with zero config; Banquo launches like a normal app. The whole feature stays inside `#![forbid(unsafe_code)]`. The one genuinely irreversible piece (being the OS default terminal) is isolated and documented, not bet on.
+
+---
+
 ## 2026-06-15 — ADR-009: Platform strategy — Unix-compatible base first, OS-specific components on top — *Accepted* (sprint 0; built later) — *extends design §VIII*
 
 **Context.** The design's §VIII already quarantines portability behind a single

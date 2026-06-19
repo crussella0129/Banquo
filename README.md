@@ -46,16 +46,46 @@ The milestone roadmap (design §VI):
 | 6 | Fire — Volcanic Glass via custom WGSL (`CallbackTrait`) | — |
 | 7 | The finish — command palette, config hot-reload, motion easing | in progress |
 
-## Run it
+## Install it (standalone)
 
-```sh
-cargo run
+Banquo is a real terminal — install it once and launch it like any other app, with **no console window** and no `cargo run` from the source tree:
+
+```powershell
+.\install.ps1                 # build --release, copy banquo.exe, add a Start-menu shortcut
+.\install.ps1 -Desktop -AddToPath   # also: Desktop shortcut + `banquo` on PATH
 ```
 
-A borderless window opens on a true PTY running your default shell (ConPTY on Windows, `openpty` on Unix). Type `ls`, `vim`, or `htop` — the parser + grid core handles full SGR colors, alt-screen, and cursor addressing. The window is transparency-capable (the desktop reads faintly through the flat field), but true Zircon glass arrives at Milestone 5.
+Then launch **Banquo** from the Start menu (or type `banquo` in any shell if you used `-AddToPath`). A borderless window opens on a true PTY (ConPTY on Windows, `openpty` on Unix). Type `ls`, `vim`, or `htop` — the parser + grid core handles full SGR colors, alt-screen, and cursor addressing.
+
+### Choose your shell
+
+Banquo runs **any shell on your machine** — PowerShell, cmd, bash, zsh, or WSL — not a single hardcoded one. Two ways to pick:
+
+- **Per tab, instantly:** open the command palette (`Ctrl+Shift+P`) and type `shell pwsh` (or `cmd`, `wsl`, `bash`…). It opens a new tab on that shell. This works even with zero configuration — Banquo detects shells on your `PATH`.
+- **As the default:** add a `[shell]` section to `banquo.toml` (`%APPDATA%\banquo\banquo.toml`):
+
+  ```toml
+  [shell]
+  default = "pwsh"
+
+  [[shell.profiles]]
+  name = "pwsh"
+  command = "pwsh.exe"
+  args = ["-NoLogo"]
+
+  [[shell.profiles]]
+  name = "ubuntu"
+  command = "wsl.exe"
+  args = ["-d", "Ubuntu"]
+  ```
+
+  With no `[shell]` section, Banquo launches your OS default shell (unchanged).
+
+### Develop it
 
 ```sh
-cargo test                              # pure unit tests (font pipeline, install latch)
+cargo run                               # dev loop (keeps a console for diagnostics)
+cargo test                              # pure unit tests (config, shell resolution, fonts)
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```

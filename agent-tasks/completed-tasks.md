@@ -180,3 +180,9 @@
 - **Completed:** 2026-06-18T00:00:00Z
 - **Files modified:** install.ps1
 - **Commit:** `a7e0f0c`
+
+## T-1110 (sprint 11) — README rewrite + ADR-011
+- **Description:** Rewrote README "Run it" → "Install it (standalone)" + "Choose your shell" + "Develop it": documents install.ps1, the palette `shell <name>` verb (zero-config detection), and a `[shell]` config example. Added ADR-011 to decisions.md recording the shell-profile model + windows-subsystem decision and the two explicit deferrals (default-terminal handoff; ADR-009 elevated-launch/shield). Gate green; `test_decisions_has_four_adrs` still passes.
+- **Completed:** 2026-06-18T00:00:00Z
+- **Files modified:** README.md, decisions.md
+- **Commit:** `60a8733`

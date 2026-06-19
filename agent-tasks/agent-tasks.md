@@ -1,6 +1,5 @@
 # Agent Tasks (Persistent Backlog)
 
-- [ ] T-1102 (sprint 11): Add ResolvedShell + into_command() in pty.rs (pure, get_argv-based) — touches: src/core/pty.rs
 - [ ] T-1103 (sprint 11): Add pure resolve_shell(config, name) -> Option<ResolvedShell> — touches: src/core/shell.rs (new), src/core/mod.rs
 - [ ] T-1104 (sprint 11): Add os::detect_shells() + pure detect_in(paths) PATH probe with guaranteed fallback — touches: src/os/mod.rs, src/os/windows.rs, src/os (unix arm)
 - [ ] T-1105 (sprint 11): Refactor open_pty + session::spawn to accept Option<&ResolvedShell> (None = new_default_prog) — touches: src/core/pty.rs, src/core/session.rs

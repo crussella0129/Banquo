@@ -8,6 +8,49 @@
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use std::io::{Read, Write};
 
+/// A fully-resolved shell spec, ready to spawn on a PTY.
+///
+/// This is the GUI-free, pure description of *which program to run* — produced
+/// by the resolver from a configured `ShellProfile` (or synthesized for the OS
+/// default). Keeping it a plain struct lets the resolution logic be unit-tested
+/// without ever spawning a process.
+// `#[allow(dead_code)]`: consumed by `resolve_shell` (T-1103) and `open_pty`
+// (T-1105); the allow is removed once those land. Exercised now by unit tests.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ResolvedShell {
+    /// The program to launch (becomes `argv[0]`).
+    pub prog: String,
+    /// Arguments after the program.
+    pub args: Vec<String>,
+    /// Working directory, if overridden.
+    pub cwd: Option<String>,
+    /// Extra environment variables to set (key, value) pairs.
+    pub env: Vec<(String, String)>,
+}
+
+#[allow(dead_code)]
+impl ResolvedShell {
+    /// Build a `portable_pty::CommandBuilder` from this spec.
+    ///
+    /// `portable-pty` models the program as `argv[0]`, so we construct with
+    /// `CommandBuilder::new(prog)` and append `args`. `cwd`/`env` are only set
+    /// when present, so an empty spec inherits Banquo's environment unchanged.
+    /// Takes `&self` (not `self`) because one `ResolvedShell` is reused to spawn
+    /// many tabs, so the `to_command` (not `into_command`) naming is correct.
+    pub fn to_command(&self) -> CommandBuilder {
+        let mut cmd = CommandBuilder::new(&self.prog);
+        cmd.args(&self.args);
+        if let Some(cwd) = &self.cwd {
+            cmd.cwd(cwd);
+        }
+        for (k, v) in &self.env {
+            cmd.env(k, v);
+        }
+        cmd
+    }
+}
+
 /// The handles returned by [`open_pty`].
 pub struct PtyHandle {
     /// Read end — the reader thread reads PTY output from here.
@@ -60,4 +103,37 @@ pub fn open_pty(cols: u16, rows: u16) -> anyhow::Result<PtyHandle> {
         master: pair.master,
         child,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+
+    #[test]
+    fn test_into_command_sets_prog_and_args() {
+        let shell = ResolvedShell {
+            prog: "pwsh.exe".to_string(),
+            args: vec!["-NoLogo".to_string()],
+            cwd: None,
+            env: vec![],
+        };
+        let cmd = shell.to_command();
+        // portable-pty has no get_prog(); the program is argv[0].
+        let argv = cmd.get_argv();
+        assert_eq!(argv[0], OsString::from("pwsh.exe"));
+        assert_eq!(argv[1], OsString::from("-NoLogo"));
+    }
+
+    #[test]
+    fn test_into_command_omits_empty_cwd_env() {
+        let shell = ResolvedShell {
+            prog: "cmd.exe".to_string(),
+            args: vec![],
+            cwd: None,
+            env: vec![],
+        };
+        let cmd = shell.to_command();
+        assert!(cmd.get_cwd().is_none());
+    }
 }

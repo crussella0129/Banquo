@@ -132,3 +132,9 @@
 - **Completed:** 2026-06-18T00:00:00Z
 - **Files modified:** src/config.rs
 - **Commit:** `ff7566f`
+
+## T-1102 (sprint 11) — ResolvedShell + to_command
+- **Description:** Added pure `ResolvedShell { prog, args, cwd, env }` + `to_command() -> CommandBuilder` in pty.rs. Named `to_command` (not the plan's `into_command`) to satisfy clippy `wrong_self_convention` — it takes `&self` because one spec spawns many tabs; EARS behavior (argv[0]==prog, args, cwd/env) unchanged. Temporary `#[allow(dead_code)]` until T-1103/T-1105 consume it. 2 unit tests assert against `get_argv()`/`get_cwd()`.
+- **Completed:** 2026-06-18T00:00:00Z
+- **Files modified:** src/core/pty.rs
+- **Commit:** `2fdd850`

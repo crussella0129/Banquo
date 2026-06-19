@@ -144,3 +144,9 @@
 - **Completed:** 2026-06-18T00:00:00Z
 - **Files modified:** src/core/shell.rs, src/core/mod.rs
 - **Commit:** `790f81f`
+
+## T-1104 (sprint 11) — os::detect_shells PATH probe
+- **Description:** Added pure `detect_in(paths) -> Vec<ShellProfile>` + ambient-`PATH` wrapper `detect_shells()` in os/mod.rs. Per-OS candidate table (Windows: pwsh/powershell/cmd/bash/wsl; Unix: bash/zsh/sh) probed via `Path::join(exe).exists()` — no spawning. Guaranteed non-empty (fallback cmd.exe / /bin/sh). WSL detected as a single profile (per-distro enumeration deferred — avoids the UTF-16LE hazard). Temporary `#[allow(dead_code)]` until T-1106. 2 cross-platform unit tests.
+- **Completed:** 2026-06-18T00:00:00Z
+- **Files modified:** src/os/mod.rs
+- **Commit:** `d0d637c`

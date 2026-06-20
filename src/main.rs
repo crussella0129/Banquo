@@ -65,6 +65,12 @@ fn main() -> Result<(), eframe::Error> {
         return Ok(());
     }
 
+    // GUI path. Before creating any window or PTY, ensure we run outside the
+    // launching terminal's job object (Windows release only; no-op otherwise),
+    // so closing that terminal can't take Banquo down. On a successful detach
+    // this call does not return — the relaunched copy continues from here.
+    os::ensure_detached();
+
     // Load config first so the startup session can honor the configured shell.
     let config = config::BanquoConfig::load();
     let default_shell = core::shell::resolve_shell(&config, None);

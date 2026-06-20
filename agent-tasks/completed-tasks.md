@@ -198,3 +198,9 @@
 - **Completed:** 2026-06-20T00:00:00Z
 - **Files modified:** src/os/mod.rs
 - **Commit:** `9ca3a53`
+
+## T-1202 (sprint 12) — call ensure_detached in main
+- **Description:** Call `os::ensure_detached()` at the top of `main()`'s GUI path — immediately after the `Compose` subcommand early-return, before config load / PTY spawn / window. CLI path keeps its console (never detaches); debug/non-Windows is a called no-op. Verified clean on Windows debug+release clippy + 44/4 tests, and Linux clippy via WSL.
+- **Completed:** 2026-06-20T00:00:00Z
+- **Files modified:** src/main.rs
+- **Commit:** `942cba6`

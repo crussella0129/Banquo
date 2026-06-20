@@ -35,7 +35,7 @@ pub fn ensure_detached() {
 // walk in sprints/s12 build-plan).
 #[cfg(all(windows, any(not(debug_assertions), test)))]
 mod win_detach {
-    use std::ffi::OsString;
+    use std::ffi::{OsStr, OsString};
     use std::os::windows::process::CommandExt;
     use std::path::Path;
     use std::process::Command;
@@ -48,9 +48,12 @@ mod win_detach {
     /// ConPTY later allocates its own pseudoconsoles per shell).
     const DETACHED_PROCESS: u32 = 0x0000_0008;
 
-    /// We should relaunch detached iff we are not already the detached child.
-    pub(super) fn should_detach(already_detached: bool) -> bool {
-        !already_detached
+    /// We should relaunch detached iff the sentinel env var is **absent** (i.e.
+    /// we are the original, not the already-detached child). Takes the env value
+    /// directly so the real recursion-guard decision is unit-testable without
+    /// touching process state.
+    pub(super) fn should_detach(sentinel: Option<&OsStr>) -> bool {
+        sentinel.is_none()
     }
 
     /// Build (no side effects) the command that relaunches this exe detached and
@@ -68,7 +71,7 @@ mod win_detach {
     #[cfg(not(debug_assertions))]
     pub(super) fn run() {
         // Already detached? The child short-circuits before any spawn.
-        if !should_detach(std::env::var_os(SENTINEL).is_some()) {
+        if !should_detach(std::env::var_os(SENTINEL).as_deref()) {
             return;
         }
         let exe = match std::env::current_exe() {
@@ -88,13 +91,15 @@ mod win_detach {
         use super::*;
 
         #[test]
-        fn test_should_detach_true_when_not_detached() {
-            assert!(should_detach(false));
+        fn test_should_detach_true_when_no_sentinel() {
+            // Original process (no sentinel) → must relaunch detached.
+            assert!(should_detach(None));
         }
 
         #[test]
-        fn test_should_detach_false_when_already_detached() {
-            assert!(!should_detach(true));
+        fn test_should_detach_false_when_sentinel_set() {
+            // Already-detached child (sentinel present) → must NOT re-detach.
+            assert!(!should_detach(Some(OsStr::new("1"))));
         }
 
         #[test]

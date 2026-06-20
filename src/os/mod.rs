@@ -11,6 +11,113 @@ pub fn apply_window_effects(config: &crate::config::BanquoConfig, frame: &mut ef
     let _ = (config, frame);
 }
 
+/// Ensure the visible Banquo runs **outside** the launching terminal's job, so
+/// closing that terminal can't take it down (the residual case after the
+/// sprint-11 GUI-subsystem change).
+///
+/// Windows + release only: re-spawns Banquo detached and broken away from any
+/// breakable job (via the **safe** `CommandExt::creation_flags` — no `unsafe`,
+/// ADR-002 intact), then exits the original. A `BANQUO_DETACHED` sentinel stops
+/// the relaunched child from recursing. No-op off Windows and in debug builds
+/// (debug `cargo run` is the dev loop and *should* stay shell-attached).
+///
+/// Honest limit: a `KILL_ON_JOB_CLOSE` job that forbids breakaway cannot be
+/// escaped in-process by any code; there `spawn()` fails and we run in place
+/// (never worse than today) — launch from the Start-menu shortcut to avoid it.
+pub fn ensure_detached() {
+    #[cfg(all(windows, not(debug_assertions)))]
+    win_detach::run();
+}
+
+// Present only where its contents are actually used — release (the real path)
+// or `cargo test` (the unit tests). Absent from the windows-debug bin and off
+// Windows, so there is no dead code under `-D warnings` (see the four-target
+// walk in sprints/s12 build-plan).
+#[cfg(all(windows, any(not(debug_assertions), test)))]
+mod win_detach {
+    use std::ffi::OsString;
+    use std::os::windows::process::CommandExt;
+    use std::path::Path;
+    use std::process::Command;
+
+    /// Env sentinel marking the already-detached child so it never re-detaches.
+    const SENTINEL: &str = "BANQUO_DETACHED";
+    /// `CREATE_BREAKAWAY_FROM_JOB` — leave the parent's job object (if allowed).
+    const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+    /// `DETACHED_PROCESS` — start with no inherited console (we're GUI-subsystem;
+    /// ConPTY later allocates its own pseudoconsoles per shell).
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
+
+    /// We should relaunch detached iff we are not already the detached child.
+    pub(super) fn should_detach(already_detached: bool) -> bool {
+        !already_detached
+    }
+
+    /// Build (no side effects) the command that relaunches this exe detached and
+    /// broken away from the job, carrying the sentinel + forwarded args.
+    pub(super) fn build_relaunch_command(exe: &Path, args: &[OsString]) -> Command {
+        let mut cmd = Command::new(exe);
+        cmd.args(args);
+        cmd.env(SENTINEL, "1");
+        cmd.creation_flags(CREATE_BREAKAWAY_FROM_JOB | DETACHED_PROCESS);
+        cmd
+    }
+
+    /// The effecting guard (release-only — its sole caller is the release-gated
+    /// `ensure_detached`, so it is absent from the test target).
+    #[cfg(not(debug_assertions))]
+    pub(super) fn run() {
+        // Already detached? The child short-circuits before any spawn.
+        if !should_detach(std::env::var_os(SENTINEL).is_some()) {
+            return;
+        }
+        let exe = match std::env::current_exe() {
+            Ok(e) => e,
+            Err(_) => return, // can't relaunch — run in place
+        };
+        let args: Vec<OsString> = std::env::args_os().skip(1).collect();
+        // On success the detached child owns the only window; exit the original.
+        // On failure (breakaway denied) fall through and run in place.
+        if build_relaunch_command(&exe, &args).spawn().is_ok() {
+            std::process::exit(0);
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn test_should_detach_true_when_not_detached() {
+            assert!(should_detach(false));
+        }
+
+        #[test]
+        fn test_should_detach_false_when_already_detached() {
+            assert!(!should_detach(true));
+        }
+
+        #[test]
+        fn test_build_relaunch_command_program_and_args() {
+            let exe = Path::new("C:/b/banquo.exe");
+            let args = vec![OsString::from("--foo"), OsString::from("bar")];
+            let cmd = build_relaunch_command(exe, &args);
+            assert_eq!(cmd.get_program(), exe.as_os_str());
+            let got: Vec<&std::ffi::OsStr> = cmd.get_args().collect();
+            assert_eq!(got, vec![OsString::from("--foo"), OsString::from("bar")]);
+        }
+
+        #[test]
+        fn test_build_relaunch_command_sets_sentinel_env() {
+            let cmd = build_relaunch_command(Path::new("banquo.exe"), &[]);
+            let has_sentinel = cmd
+                .get_envs()
+                .any(|(k, v)| k == "BANQUO_DETACHED" && v == Some(OsString::from("1").as_os_str()));
+            assert!(has_sentinel, "relaunch command must set BANQUO_DETACHED=1");
+        }
+    }
+}
+
 /// A shell Banquo knows how to look for on `PATH`.
 struct ShellCandidate {
     /// Profile name surfaced to the user.

@@ -192,3 +192,9 @@
 - **Completed:** 2026-06-19T00:00:00Z
 - **Files modified:** Cargo.toml, Cargo.lock, .github/workflows/ci.yml, src/os/mod.rs
 - **Commit:** `4f94cf8` + `10c47d4`
+
+## T-1201 (sprint 12) — ensure_detached + win_detach guard
+- **Description:** Added `os::ensure_detached()` (unconditional def + call; release-windows body re-spawns Banquo via the safe `CommandExt::creation_flags(CREATE_BREAKAWAY_FROM_JOB | DETACHED_PROCESS)`, exits original on Ok, runs in place on Err) plus `#[cfg(all(windows, any(not(debug_assertions), test)))] mod win_detach` with `should_detach`, `build_relaunch_command` (the real spawn-command builder, unit-tested), and release-only `run()`. Zero unsafe (ADR-002 intact). cfg design reconciled per critic C-002/C-008 — verified clean across all four targets: win debug/release/test clippy + Linux(WSL) clippy/test. 4 win_detach unit tests pass.
+- **Completed:** 2026-06-20T00:00:00Z
+- **Files modified:** src/os/mod.rs
+- **Commit:** `9ca3a53`

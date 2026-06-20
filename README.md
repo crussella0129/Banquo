@@ -64,6 +64,13 @@ Then launch **Banquo** from the Start menu (or type `banquo` in any shell if you
 > process: it has **no console window** and is **independent of any shell** —
 > closing the terminal you launched it from does not affect it. If you ever see
 > Banquo die when a shell closes, you launched the debug build via `cargo run`.
+>
+> On Windows, the release binary re-launches itself detached and broken away from
+> the launching terminal's job on startup, so even `banquo` typed inside Windows
+> Terminal survives that tab closing. (Foreground `banquo` returns your prompt
+> immediately — the window is now independent.) The one case nothing can escape
+> is a terminal that pins children in a *no-breakaway* kill-on-close job; there,
+> launch from the Start-menu shortcut (parented to Explorer, no job).
 
 ### Choose your shell
 

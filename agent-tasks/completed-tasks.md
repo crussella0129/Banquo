@@ -204,3 +204,9 @@
 - **Completed:** 2026-06-20T00:00:00Z
 - **Files modified:** src/main.rs
 - **Commit:** `942cba6`
+
+## T-1203 (sprint 12) — ADR-012 + README launch-independence note
+- **Description:** Added ADR-012 to decisions.md (safe relaunch-guard design via CommandExt::creation_flags, BANQUO_DETACHED sentinel, DETACHED_PROCESS+ConPTY coexistence, and the honest no-breakaway-job limitation + Start-menu workaround; rejected the unsafe detection path). Extended the README "Install it" callout to explain the WT-tab independence + immediate-prompt behavior + the residual case. `test_decisions_has_four_adrs` still passes.
+- **Completed:** 2026-06-20T00:00:00Z
+- **Files modified:** decisions.md, README.md
+- **Commit:** `212e43f`

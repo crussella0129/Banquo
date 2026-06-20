@@ -5,6 +5,18 @@ future work; later sprints' "ignored-ADR" review screens against this log.
 
 ---
 
+## 2026-06-20 — ADR-012: Full launch-independence via a safe job-breakaway relaunch guard — *Accepted* (sprint 12) — *completes ADR-011*
+
+**Context.** ADR-011 made the release binary GUI-subsystem (no console window), and it empirically survives its launching shell exiting — including inside a Windows Terminal tab. The one residual way a host could still take Banquo down: parenting it in a Win32 **job object** with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` (all in-job processes, GUI included, die when the job's handles close). ADR-011 deferred this case; this is its resolution. ADR-002 (`#![forbid(unsafe_code)]`) forbids the obvious Win32 approach.
+
+**Decision.** A Windows-release-only startup guard, `os::ensure_detached()`, run as the first action of `main()`'s GUI path (after CLI-subcommand handling, so `compose` keeps its console). It re-spawns Banquo with `CREATE_BREAKAWAY_FROM_JOB | DETACHED_PROCESS` via **`std::os::windows::process::CommandExt::creation_flags` — a *safe* std API** (no `unsafe`, no `windows-sys` job calls, ADR-002 intact). A `BANQUO_DETACHED=1` env sentinel makes the relaunched child short-circuit before any spawn (recursion-proof). On a successful breakaway the original `process::exit(0)`s and the detached child owns the only window; on failure it runs in place. The detached process has no inherited console — that is fine: it hosts its own ConPTY pseudoconsoles per shell (no inherited console needed; WezTerm/Alacritty precedent).
+
+**Honest limitation.** A `KILL_ON_JOB_CLOSE` job that does **not** set `JOB_OBJECT_LIMIT_BREAKAWAY_OK` cannot be escaped from within by *any* code, safe or unsafe — `CreateProcess` with the breakaway flag returns `ERROR_ACCESS_DENIED`. There the guard degrades to running in place (never worse than before), and the bulletproof path is launching outside the job (the `install.ps1` Start-menu shortcut → parent `explorer.exe`, no job). The unsafe Win32 *detection* path (`IsProcessInJob`/`AssignProcessToJobObject`) was rejected: it buys no extra escape capability for an ADR-002 carve-out.
+
+**Consequences.** Launching `banquo` from a shell is now independent of that shell wherever the job permits breakaway (or there is no job); the common cases are covered with zero unsafe. Behavioral note: a foreground `banquo` returns the shell prompt immediately (the original exits as the detached child takes over). The default-terminal handoff remains deferred (ADR-011).
+
+---
+
 ## 2026-06-18 — ADR-011: Shell pluggability + standalone launch; default-terminal handoff and elevation deferred — *Accepted* (sprint 11)
 
 **Context.** Banquo was a complete terminal *emulator* but felt parasitic on another terminal: it spawned exactly one hardcoded shell (`CommandBuilder::new_default_prog()` → cmd.exe on Windows / `$SHELL` on Unix) with no chooser, and the only run path was `cargo run` from the repo, whose parent console stayed attached because the binary was compiled console-subsystem. Users wanted to pick PowerShell/bash/zsh/WSL and to launch Banquo as a real standalone app.

@@ -40,6 +40,17 @@ eframe = { version = "0.34", default-features = false, features = [
 # eframe resolves to keep a single egui in the tree.
 egui = "0.34"
 
+# --- Milestone 6: "Fire" — the custom WGSL shader pipeline ---
+# Direct wgpu + egui-wgpu for the `egui_wgpu::CallbackTrait` glass-material render
+# pass. CARET versions (not `=`) so cargo unifies on eframe's resolution — a hard
+# `=` pin would force a second wgpu tree on the next eframe patch bump (ADR-001).
+# The single-version guarantee is enforced by `cargo tree -p wgpu`.
+wgpu = "29"
+egui-wgpu = "0.34"
+# Safe POD<->bytes for the shader uniform buffer (`Pod`/`Zeroable` *derives* — no
+# unsafe in our crate; ADR-002 stays intact).
+bytemuck = { version = "1", features = ["derive"] }
+
 # --- Milestone 2: "It echoes" ---
 # The truth-half core: a safe-Rust VT parser + grid engine (ADR-004). Banquo wraps
 # it behind its own Snapshot/Cell types so no alacritty_* type leaks downstream.

@@ -210,3 +210,9 @@
 - **Completed:** 2026-06-20T00:00:00Z
 - **Files modified:** decisions.md, README.md
 - **Commit:** `212e43f`
+
+## T-1301 (sprint 13) — wgpu/egui-wgpu/bytemuck deps
+- **Description:** Added direct `wgpu = "29"`, `egui-wgpu = "0.34"`, `bytemuck = {version="1", features=["derive"]}` (caret, NOT `=` — unify on eframe's resolution per ADR-001; cargo tree gate confirms single wgpu 29.0.3). All three were already transitive; caret resolves identically. Windows clippy clean + Linux build clean (WSL).
+- **Completed:** 2026-06-20T00:00:00Z
+- **Files modified:** Cargo.toml, Cargo.lock
+- **Commit:** `ca8cff8`

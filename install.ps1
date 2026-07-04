@@ -45,7 +45,7 @@ Push-Location $repoRoot
 try {
     cargo build --release
     if ($LASTEXITCODE -ne 0) {
-        throw "cargo build --release failed (exit $LASTEXITCODE). Aborting — nothing was installed."
+        throw "cargo build --release failed (exit $LASTEXITCODE). Aborting - nothing was installed."
     }
 }
 finally {
@@ -64,7 +64,7 @@ $targetExe = Join-Path $InstallDir 'banquo.exe'
 Copy-Item -Path $builtExe -Destination $targetExe -Force
 Write-Host "  Copied banquo.exe -> $targetExe"
 
-# 3. Create shortcut(s) via WScript.Shell (plain COM automation — no unsafe code).
+# 3. Create shortcut(s) via WScript.Shell (plain COM automation - no unsafe code).
 Write-Host "`n[3/3] Creating shortcut(s)..." -ForegroundColor Yellow
 $wsh = New-Object -ComObject WScript.Shell
 
@@ -72,7 +72,7 @@ function New-BanquoShortcut([string]$LinkPath) {
     $sc = $wsh.CreateShortcut($LinkPath)
     $sc.TargetPath = $targetExe
     $sc.WorkingDirectory = $InstallDir
-    $sc.Description = 'Banquo — a most beautiful terminal'
+    $sc.Description = 'Banquo - a most beautiful terminal'
     $sc.Save()
     Write-Host "  Shortcut: $LinkPath"
 }

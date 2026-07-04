@@ -113,7 +113,10 @@ pub fn build_fonts(config: &crate::config::BanquoConfig) -> (FontDefinitions, Fo
         );
     } else {
         // Alias symbols to mono if no path provided
-        let mut fallbacks = vec![BANQUO_MONO.to_owned()];
+        let mut fallbacks = Vec::new();
+        if defs.font_data.contains_key(BANQUO_MONO) {
+            fallbacks.push(BANQUO_MONO.to_owned());
+        }
         if let Some(default_mono) = defs.families.get(&FontFamily::Monospace) {
             fallbacks.extend(default_mono.iter().cloned());
         }
@@ -123,7 +126,10 @@ pub fn build_fonts(config: &crate::config::BanquoConfig) -> (FontDefinitions, Fo
 
     // Force all UI proportional fonts to use our monospace font instead,
     // ensuring the entire app is strictly monospace.
-    let mut mono_fallbacks = vec![BANQUO_MONO.to_owned()];
+    let mut mono_fallbacks = Vec::new();
+    if defs.font_data.contains_key(BANQUO_MONO) {
+        mono_fallbacks.push(BANQUO_MONO.to_owned());
+    }
     if let Some(default_mono) = defs.families.get(&FontFamily::Monospace) {
         mono_fallbacks.extend(default_mono.iter().cloned());
     }

@@ -21,6 +21,7 @@ mod core;
 mod fonts;
 mod metrics;
 pub mod os;
+pub mod render;
 pub mod texture_gen;
 
 use clap::{Parser, Subcommand};

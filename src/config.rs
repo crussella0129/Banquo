@@ -57,6 +57,7 @@ pub struct WindowAppearanceConfig {
     pub corner_style: Option<String>,
     pub radius: Option<f32>,
     pub inset: Option<f32>,
+    pub opacity: Option<f32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
@@ -73,6 +74,7 @@ impl Default for WindowAppearanceConfig {
             corner_style: Some("square".to_string()),
             radius: Some(8.0),
             inset: Some(0.0),
+            opacity: Some(1.0),
         }
     }
 }
@@ -85,6 +87,7 @@ pub struct FontConfig {
     pub symbols_path: Option<String>,
     pub offset_x: Option<f32>,
     pub offset_y: Option<f32>,
+    pub size: Option<f32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]

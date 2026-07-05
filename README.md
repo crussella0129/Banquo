@@ -1,143 +1,108 @@
 # Banquo
 
-*A most beautiful terminal — with a conscience about its own correctness.*
+A terminal with a conscience about its own correctness.
 
-Banquo is a **100% Rust** GUI terminal emulator built around a clean seam between
-**truth** (PTY bytes → parser → grid → cursor → scrollback; pure, deterministic,
-GUI-unaware) and **appearance** (`view = render(snapshot, material)`; a pure
-function of that truth). The truth-half is checkable in a headless harness; the
-appearance-half is a layered *material engine* that ships four presets —
-**Blanco**, **Zircon**, **Concrete**, and **Volcanic Glass**.
+Banquo is a **100% Rust** GPU-accelerated terminal emulator built on a clean separation between **truth** (PTY, parser, grid) and **appearance** (fonts, materials, shaders). The truth half is pure, deterministic, and testable headlessly. The appearance half is a layered material engine that ships six presets and a live-reloading TOML configurator.
 
-The full design argument lives in [`BANQUO_DESIGN.md`](./BANQUO_DESIGN.md).
+> *Banquo gets kings, though he be none* -- a terminal is the parent of every process it spawns and the author of none of their work.
 
-> *Banquo gets kings, though he be none* — a terminal is the parent of every
-> process it spawns and the author of none of their work. (§IX)
+---
 
-## Status
+## Quick Start
 
-**Milestone 1 — "A window that is unmistakably yours."** ✅ *(current)*
-
-A frameless, transparency-capable `eframe` + `wgpu` window with
-`#![forbid(unsafe_code)]`, proving the toolchain end-to-end (compile → window →
-font pipeline → wgpu backend) and laying down the truth/appearance module seam.
-No PTY, grid, or materials yet.
-
-It currently paints a small **typographic specimen** on a flat tinted field —
-the hero tagline plus a Geist weight ladder (Thin → Black) and one Iosevka
-monospace line — exercising Banquo's two font roles:
-
-- **Mono / grid:** **Iosevka** (`banquo-mono`). The terminal grid must be
-  monospace (guarantee #3); this is the face it will use.
-- **Display / UI:** **Geist**, a proportional family registered as a discrete
-  weight ladder (egui can't drive a variable font's weight axis, so each weight
-  is its own static face). For the hero now, the command palette later — never
-  the grid.
-
-The milestone roadmap (design §VI):
-
-| # | Milestone | State |
-|---|-----------|-------|
-| 1 | Window + one Iosevka line | ✅ done |
-| 2 | It echoes — `alacritty_terminal` core, PTY, snapshot handoff (becomes a real terminal) | ✅ done |
-| 3 | Typography you'd brag about — metrics, cursor, hot-swappable TOML Configurator | ✅ done |
-| 4 | The layer compositor — multi-tab support, dynamic Grid Auto-Snap rendering | ✅ done |
-| 5 | Glass + the capability model — Zircon, 3-tier degradation | next |
-| 6 | Fire — Volcanic Glass via custom WGSL (`CallbackTrait`) | — |
-| 7 | The finish — command palette, config hot-reload, motion easing | in progress |
-
-## Install it (standalone)
-
-Banquo is a real terminal — install it once and launch it like any other app, with **no console window** and no `cargo run` from the source tree:
+### Install (Windows)
 
 ```powershell
-.\install.ps1                 # build --release, copy banquo.exe, add a Start-menu shortcut
-.\install.ps1 -Desktop -AddToPath   # also: Desktop shortcut + `banquo` on PATH
+git clone https://github.com/crussella0129/Banquo.git
+cd Banquo
+.\install.ps1                 # build, install, create Start-menu shortcut
+.\install.ps1 -Desktop -AddToPath   # optional: Desktop shortcut + PATH
 ```
 
-Then launch **Banquo** from the Start menu (or type `banquo` in any shell if you used `-AddToPath`). A borderless window opens on a true PTY (ConPTY on Windows, `openpty` on Unix). Type `ls`, `vim`, or `htop` — the parser + grid core handles full SGR colors, alt-screen, and cursor addressing.
+Then launch **Banquo** from the Start menu.
 
-> **Don't use `cargo run` to "use" Banquo.** `cargo run` launches the *debug*
-> build as a child of your shell and **blocks it** — close that shell and Banquo
-> closes too. That's the dev loop, not the product. The installed/release binary
-> (`target\release\banquo.exe`, or the Start-menu shortcut) is a standalone GUI
-> process: it has **no console window** and is **independent of any shell** —
-> closing the terminal you launched it from does not affect it. If you ever see
-> Banquo die when a shell closes, you launched the debug build via `cargo run`.
->
-> On Windows, the release binary re-launches itself detached and broken away from
-> the launching terminal's job on startup, so even `banquo` typed inside Windows
-> Terminal survives that tab closing. (Foreground `banquo` returns your prompt
-> immediately — the window is now independent.) The one case nothing can escape
-> is a terminal that pins children in a *no-breakaway* kill-on-close job; there,
-> launch from the Start-menu shortcut (parented to Explorer, no job).
-
-### Choose your shell
-
-Banquo runs **any shell on your machine** — PowerShell, cmd, bash, zsh, or WSL — not a single hardcoded one. Two ways to pick:
-
-- **Per tab, instantly:** open the command palette (`Ctrl+Shift+P`) and type `shell pwsh` (or `cmd`, `wsl`, `bash`…). It opens a new tab on that shell. This works even with zero configuration — Banquo detects shells on your `PATH`.
-- **As the default:** add a `[shell]` section to `banquo.toml` (`%APPDATA%\banquo\banquo.toml`):
-
-  ```toml
-  [shell]
-  default = "pwsh"
-
-  [[shell.profiles]]
-  name = "pwsh"
-  command = "pwsh.exe"
-  args = ["-NoLogo"]
-
-  [[shell.profiles]]
-  name = "ubuntu"
-  command = "wsl.exe"
-  args = ["-d", "Ubuntu"]
-  ```
-
-  With no `[shell]` section, Banquo launches your OS default shell (unchanged).
-
-### Develop it
+### Build from Source (any platform)
 
 ```sh
-cargo run                               # dev loop (keeps a console for diagnostics)
-cargo test                              # pure unit tests (config, shell resolution, fonts)
+cargo build --release
+cp configs/zircon.toml ~/.config/banquo/banquo.toml   # or %APPDATA%\banquo\ on Windows
+./target/release/banquo
+```
+
+See [docs/installation.md](docs/installation.md) for the full guide.
+
+---
+
+## Features
+
+**Multi-tab terminal.** Each tab is an independent PTY session. Click `+` to add tabs, or use the command palette to open a tab on a specific shell.
+
+**Six built-in themes.** Zircon (glass), Blanco (canvas), Concrete (stone), Concrete Dark (slab), Primordial (abyss), Volcanic Glass (plasma). Switch live via the command palette or by editing your config file.
+
+**Hot-reloading config.** Edit `banquo.toml` and changes take effect immediately. No restart needed. Fonts, themes, window chrome, shell defaults, and font size all reload live.
+
+**Configurable font size.** Set `[fonts] size = 22.0` for comfortable 4K usage. The entire grid geometry scales from this single value.
+
+**Background opacity control.** Dial `[window] opacity = 0.7` to control how much OS blur bleeds through.
+
+**OS compositor integration.** Request blur from Windows Acrylic/Mica with `[os.windows] blur = true`.
+
+**Custom fonts.** Point `monospace_path` to any `.ttf` or `.otf` on your system. A separate `symbols_path` handles box-drawing characters.
+
+**Shell switching.** Configure named shell profiles or use `Ctrl+Shift+P` then `shell pwsh` to open a tab on any shell on your PATH, with zero config.
+
+**Frameless window.** Custom chrome with configurable edge styles (flat, beveled, 3D), corner styles (square, G1, G2, G3 squircle), and radius.
+
+**Custom WGSL shaders.** The Volcanic Glass theme drives real-time GPU effects (glyph aura, active-row radiance) through a `CallbackTrait` render pass.
+
+---
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Configuration Reference](docs/configuration.md) | Every field in `banquo.toml`, with types, defaults, and examples |
+| [Themes](docs/themes.md) | Theme gallery, background modes, and opacity control |
+| [Keybindings](docs/keybindings.md) | Keyboard shortcuts and command palette commands |
+| [Installation](docs/installation.md) | Full install guide for Windows, macOS, and Linux |
+| [Architecture](docs/architecture.md) | Codebase map, data flow, threading model, and how to add themes |
+| [Troubleshooting](docs/troubleshooting.md) | Common issues and fixes |
+| [Design Document](BANQUO_DESIGN.md) | The full design argument (the "why" behind every choice) |
+
+---
+
+## The Six Guarantees
+
+Banquo dies for these. A feature request that violates one is answered *no*.
+
+1. **No `unsafe` in Banquo's own crates.** `#![forbid(unsafe_code)]`, not `deny`.
+2. **The core never blocks the frame.** A 2 GB `cat` may fall behind, never freeze the window.
+3. **Monospace alignment is sacred.** Every cell is exactly one (or two) cells wide; paint obeys the grid.
+4. **Font size is a setting, not a function of window size.** Resizing reflows (changes rows/cols via SIGWINCH); it never scales glyphs.
+5. **A theme can never kill your shell.** Truth and appearance are separate lifetimes; appearance is disposable.
+6. **It tells the truth about what it can't do.** Materials degrade visibly and honestly; Banquo never fakes a capability it lacks.
+
+---
+
+## Develop
+
+```sh
+cargo run                               # dev loop (keeps console for diagnostics)
+cargo test                              # unit tests (config, shell, fonts, shaders)
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
 
-## The six guarantees (design §II)
+Do not use `cargo run` as your daily terminal. It is the dev loop. The installed release binary is a standalone GUI process that survives shell closure. See [Troubleshooting](docs/troubleshooting.md) for why.
 
-Banquo dies for these; a feature request that violates one is answered *no*.
+---
 
-1. **No `unsafe` in Banquo's own crates** — `#![forbid(unsafe_code)]`, not `deny`.
-2. **The core never blocks the frame** — a 2 GB `cat` may fall behind, never freeze the window.
-3. **Monospace alignment is sacred** — every cell is exactly one (or two) cells wide; paint obeys the grid.
-4. **Font size is a setting, not a function of window size** — resizing *reflows* (changes rows/cols via `SIGWINCH`); it never scales glyphs.
-5. **A theme can never kill your shell** — truth and appearance are separate lifetimes; appearance is disposable.
-6. **It tells the truth about what it can't do** — materials degrade visibly and honestly; Banquo never fakes a capability it lacks.
+## What Banquo Refuses to Be
 
-## Banquo Compose (Configurator)
+Banquo handles **multi-tab** but refuses splits/pane multiplexing (compose with a real WM or tmux). There is no telemetry, no auto-update, and **no network code at all**. Its entire surface to the outside world is one PTY per tab and one config file.
 
-Banquo features a dynamic TOML configurator known as **Banquo Compose**. You can hot-swap fonts and alter rendering logic simply by editing your config file (`~/.config/banquo/banquo.toml` on Unix/macOS, or `%APPDATA%\banquo\banquo.toml` on Windows).
-
-```toml
-[fonts]
-monospace_path = "C:\\Users\\charl\\Banquo\\assets\\fonts\\Geist-Regular.ttf"
-
-[grid]
-mode = "auto"
-```
-
-## Auto-Snap Proportional Rendering Engine
-
-The terminal grid must inherently align character positions. However, when using `grid.mode = "auto"`, Banquo utilizes a revolutionary "Auto-Snap" Proportional Rendering Engine. It calculates the exact typographic advance width of every character to dynamically position cells, turning your terminal from a rigid grid into a beautifully typeset document—all without breaking the cursor logic or SGR background colors!
-
-## What Banquo refuses to be (design §VII)
-
-While Banquo features an incredibly sleek, unopinionated **Multi-Tab** interface that seamlessly allows multiple independent PTY sessions, it refuses to handle splits/pane multiplexing (compose with a real WM like sway, or run tmux). There is no telemetry, no auto-update, and **no network code at all**. Its entire surface to the outside world is one PTY per tab and one config file.
+---
 
 ## License
 
-Banquo's own code: MIT OR Apache-2.0. The vendored Iosevka font
-(`assets/fonts/`) is under the SIL Open Font License 1.1 — see
-`assets/fonts/Iosevka-LICENSE.md`.
+Banquo's own code: MIT OR Apache-2.0. The vendored Iosevka font (`assets/fonts/`) is under the SIL Open Font License 1.1. See `assets/fonts/Iosevka-LICENSE.md`.

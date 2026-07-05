@@ -30,9 +30,8 @@ const DEFAULT_BG: Color32 = Color32::from_rgb(0, 0, 0);
 /// Grid padding in logical pixels.
 const GRID_PADDING: f32 = 4.0;
 
-/// The fixed font size for the terminal grid (guarantee #4: font size is a
-/// setting, not a function of window size).
-const MONO_SIZE: f32 = 16.0;
+/// The default font size for the terminal grid
+const DEFAULT_MONO_SIZE: f32 = 16.0;
 
 /// Convert a Banquo [`Rgb`] to an egui [`Color32`].
 fn rgb_to_color32(rgb: Rgb) -> Color32 {
@@ -40,8 +39,8 @@ fn rgb_to_color32(rgb: Rgb) -> Color32 {
 }
 
 /// The monospace font for the grid.
-fn mono_font() -> FontId {
-    FontId::new(MONO_SIZE, FontFamily::Name(BANQUO_MONO.into()))
+fn mono_font(size: f32) -> FontId {
+    FontId::new(size, FontFamily::Name(BANQUO_MONO.into()))
 }
 
 /// The symbol font for block drawing characters, dynamically scaled.
@@ -50,11 +49,11 @@ fn symbols_font(symbols_size: f32) -> FontId {
 }
 
 /// Select the appropriate font for a character (symbol mapping).
-fn font_for_char(ch: char, symbols_size: f32) -> FontId {
+fn font_for_char(ch: char, size: f32, symbols_size: f32) -> FontId {
     if ('\u{2500}'..='\u{259F}').contains(&ch) {
         symbols_font(symbols_size)
     } else {
-        mono_font()
+        mono_font(size)
     }
 }
 
@@ -179,6 +178,7 @@ pub struct BanquoApp {
     // Cached theme textures
     texture_blanco: Option<egui::TextureHandle>,
     texture_concrete: Option<egui::TextureHandle>,
+    texture_concrete_dark: Option<egui::TextureHandle>,
     texture_primordial: Option<egui::TextureHandle>,
 }
 
@@ -205,7 +205,7 @@ impl BanquoApp {
             sessions: vec![session],
             active_tab: 0,
             cell_metrics: None,
-            symbols_size: MONO_SIZE,
+            symbols_size: DEFAULT_MONO_SIZE,
             last_grid_size: None,
             native_decorations,
             last_mouse_pos: None,
@@ -218,6 +218,7 @@ impl BanquoApp {
             smoothed_cursor_pos: None,
             texture_blanco: None,
             texture_concrete: None,
+            texture_concrete_dark: None,
             texture_primordial: None,
         }
     }
@@ -242,9 +243,10 @@ impl BanquoApp {
             return;
         }
 
-        let font_text = mono_font();
+        let size = self.config.fonts.size.unwrap_or(DEFAULT_MONO_SIZE);
+        let font_text = mono_font(size);
         // Measure symbols at base size to find the scale ratio
-        let font_blocks = symbols_font(MONO_SIZE);
+        let font_blocks = symbols_font(size);
         let ppp = ctx.pixels_per_point();
 
         let offset_x = self.config.fonts.offset_x.unwrap_or(0.0);
@@ -277,7 +279,7 @@ impl BanquoApp {
                 let scale_y = if block_h > 0.0 { cell_h / block_h } else { 1.0 };
                 let scale = scale_x.max(scale_y) * 1.01;
 
-                self.symbols_size = MONO_SIZE * scale;
+                self.symbols_size = size * scale;
 
                 eprintln!("banquo: metrics: text_w={text_w} text_h={text_h} cell_w={cell_w} cell_h={cell_h} scale={scale}");
 
@@ -300,6 +302,10 @@ impl BanquoApp {
             let img = crate::texture_gen::generate_concrete_texture(4096, 4096);
             self.texture_concrete =
                 Some(ctx.load_texture("concrete_bg", img, egui::TextureOptions::LINEAR));
+        } else if theme == "concrete-dark" && self.texture_concrete_dark.is_none() {
+            let img = crate::texture_gen::generate_concrete_dark_texture(4096, 4096);
+            self.texture_concrete_dark =
+                Some(ctx.load_texture("concrete_dark_bg", img, egui::TextureOptions::LINEAR));
         } else if theme == "primordial" && self.texture_primordial.is_none() {
             let img = crate::texture_gen::generate_primordial_texture(4096, 4096);
             self.texture_primordial =
@@ -430,12 +436,18 @@ impl App for BanquoApp {
         content_rect = content_rect.shrink(corner_padding);
 
         let theme = self.config.theme.as_deref().unwrap_or("zircon");
+        let size = self.config.fonts.size.unwrap_or(DEFAULT_MONO_SIZE);
 
-        let (bg_fill, bg_texture) = match theme {
+        let opacity = window_cfg.opacity.unwrap_or(1.0);
+        let (mut bg_fill, bg_texture) = match theme {
             "blanco" => (Color32::WHITE, self.texture_blanco.clone()),
             "concrete" => (
                 Color32::from_rgb(180, 180, 180),
                 self.texture_concrete.clone(),
+            ),
+            "concrete-dark" => (
+                Color32::from_rgb(15, 15, 15),
+                self.texture_concrete_dark.clone(),
             ),
             "primordial" => (
                 Color32::from_black_alpha(204),
@@ -446,6 +458,14 @@ impl App for BanquoApp {
             }
             _ => (Color32::from_black_alpha(142), None), // zircon with slightly more transparency
         };
+
+        // Apply config-driven opacity to the background fill
+        bg_fill = Color32::from_rgba_unmultiplied(
+            bg_fill.r(),
+            bg_fill.g(),
+            bg_fill.b(),
+            (bg_fill.a() as f32 * opacity).round().clamp(0.0, 255.0) as u8,
+        );
 
         // Draw shape with slight inset to hide anti-aliasing halo under the stroke
         let bg_rect = rect.shrink(0.5);
@@ -486,10 +506,11 @@ impl App for BanquoApp {
                 0.5
             };
 
+            let tex_color = Color32::from_white_alpha((255.0 * opacity).round().clamp(0.0, 255.0) as u8);
             mesh.vertices.push(egui::epaint::Vertex {
                 pos: bg_rect.center(),
                 uv: egui::pos2(center_u, center_v),
-                color: Color32::WHITE,
+                color: tex_color,
             });
             for p in &points {
                 let u = if is_reveal {
@@ -505,7 +526,7 @@ impl App for BanquoApp {
                 mesh.vertices.push(egui::epaint::Vertex {
                     pos: *p,
                     uv: egui::pos2(u, v),
-                    color: Color32::WHITE,
+                    color: tex_color,
                 });
             }
             for i in 1..=points.len() {
@@ -951,8 +972,8 @@ impl App for BanquoApp {
                             painter.text(
                                 egui::pos2(x, y),
                                 egui::Align2::LEFT_TOP,
-                                cell.ch,
-                                font_for_char(cell.ch, self.symbols_size),
+                                cell.ch.to_string(),
+                                font_for_char(cell.ch, metrics.cell_h, self.symbols_size),
                                 fg,
                             );
                         }
@@ -1015,7 +1036,7 @@ impl App for BanquoApp {
                         new_pos,
                         egui::Align2::LEFT_TOP,
                         cursor_ch,
-                        font_for_char(cursor_ch, self.symbols_size),
+                        font_for_char(cursor_ch, size, self.symbols_size),
                         inverse_fg,
                     );
                 }

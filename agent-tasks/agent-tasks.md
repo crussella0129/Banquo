@@ -1,1 +1,3 @@
-<!-- clear -->
+- [ ] Modify `config.rs` (size, opacity).
+- [ ] Modify `texture_gen.rs` (concrete-dark).
+- [ ] Modify `app.rs` (font size logic, opacity tint, theme mapping).

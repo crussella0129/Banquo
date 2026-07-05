@@ -85,3 +85,42 @@ pub fn generate_primordial_texture(width: usize, height: usize) -> egui::ColorIm
     }
     img
 }
+
+pub fn generate_concrete_dark_texture(width: usize, height: usize) -> egui::ColorImage {
+    let base_color = egui::Color32::from_rgb(20, 20, 20);
+    let mut img = egui::ColorImage::new([width, height], vec![base_color; width * height]);
+    let mut rng = rand::rng();
+
+    // Base dots - more scarce
+    for _ in 0..(width * height / 3000) {
+        let x = rng.random_range(0..width);
+        let y = rng.random_range(0..height);
+
+        let size = rng.random_range(1..=2); // smaller dots
+        let color_choice = rng.random_range(0..3);
+        let color = match color_choice {
+            0 => egui::Color32::from_rgb(0, 0, 0),      // Blackish
+            1 => egui::Color32::from_rgb(80, 50, 30),   // Orange/Rust (darker)
+            _ => egui::Color32::from_rgb(40, 30, 25),   // Brown (darker)
+        };
+
+        for dy in 0..size {
+            for dx in 0..size {
+                if x + dx < width && y + dy < height {
+                    img.pixels[(y + dy) * width + (x + dx)] = color;
+                }
+            }
+        }
+    }
+
+    // Add subtle noise to the base gray to give it texture
+    for pixel in img.pixels.iter_mut() {
+        if *pixel == base_color {
+            let noise = rng.random_range(-5..=5);
+            let r = (20_i32 + noise).clamp(0, 255) as u8;
+            *pixel = egui::Color32::from_rgb(r, r, r);
+        }
+    }
+
+    img
+}

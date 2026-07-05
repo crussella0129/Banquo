@@ -40,7 +40,7 @@ Write-Host 'Banquo installer' -ForegroundColor Cyan
 Write-Host '================'
 
 # 1. Build (release). Abort the whole install if this fails.
-Write-Host "`n[1/3] Building release binary (cargo build --release)..." -ForegroundColor Yellow
+Write-Host "`n[1/4] Building release binary (cargo build --release)..." -ForegroundColor Yellow
 Push-Location $repoRoot
 try {
     cargo build --release
@@ -58,14 +58,14 @@ if (-not (Test-Path $builtExe)) {
 }
 
 # 2. Copy to the install directory.
-Write-Host "`n[2/3] Installing to $InstallDir ..." -ForegroundColor Yellow
+Write-Host "`n[2/4] Installing to $InstallDir ..." -ForegroundColor Yellow
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 $targetExe = Join-Path $InstallDir 'banquo.exe'
 Copy-Item -Path $builtExe -Destination $targetExe -Force
 Write-Host "  Copied banquo.exe -> $targetExe"
 
 # 3. Create shortcut(s) via WScript.Shell (plain COM automation - no unsafe code).
-Write-Host "`n[3/3] Creating shortcut(s)..." -ForegroundColor Yellow
+Write-Host "`n[3/4] Creating shortcut(s)..." -ForegroundColor Yellow
 $wsh = New-Object -ComObject WScript.Shell
 
 function New-BanquoShortcut([string]$LinkPath) {
@@ -95,6 +95,24 @@ if ($AddToPath) {
     else {
         Write-Host "  $InstallDir already on user PATH."
     }
+}
+
+# 4. Bootstrap default configuration if missing
+Write-Host "`n[4/4] Setting up default configuration..." -ForegroundColor Yellow
+$configDir = Join-Path $env:APPDATA 'banquo'
+$configFile = Join-Path $configDir 'banquo.toml'
+
+if (-not (Test-Path $configFile)) {
+    New-Item -ItemType Directory -Force -Path $configDir | Out-Null
+    $defaultTheme = Join-Path $repoRoot 'configs\zircon.toml'
+    if (Test-Path $defaultTheme) {
+        Copy-Item -Path $defaultTheme -Destination $configFile -Force
+        Write-Host "  Created default config at $configFile (using Zircon theme)"
+    } else {
+        Write-Host "  Warning: $defaultTheme not found, skipping default config setup." -ForegroundColor Red
+    }
+} else {
+    Write-Host "  Existing config found at $configFile, preserving."
 }
 
 Write-Host "`nDone. Launch Banquo from the Start menu, or run:" -ForegroundColor Green

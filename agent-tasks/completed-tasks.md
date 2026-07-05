@@ -1,3 +1,4 @@
 - [x] Modify `install.ps1`: Replace em-dashes `—` with standard hyphens `-`.
 - [x] Modify `src/render/mod.rs`: Change `multiview_mask: 0,` to `multiview_mask: None,`.
 - [x] Fix `fonts.rs` to only inject `BANQUO_MONO` into the font fallback arrays if `defs.font_data.contains_key(BANQUO_MONO)`.
+- [x] Modify `install.ps1` to scaffold `banquo.toml` using `configs\zircon.toml`.

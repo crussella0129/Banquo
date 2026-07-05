@@ -506,7 +506,8 @@ impl App for BanquoApp {
                 0.5
             };
 
-            let tex_color = Color32::from_white_alpha((255.0 * opacity).round().clamp(0.0, 255.0) as u8);
+            let tex_color =
+                Color32::from_white_alpha((255.0 * opacity).round().clamp(0.0, 255.0) as u8);
             mesh.vertices.push(egui::epaint::Vertex {
                 pos: bg_rect.center(),
                 uv: egui::pos2(center_u, center_v),

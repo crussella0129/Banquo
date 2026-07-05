@@ -146,7 +146,11 @@ impl egui_wgpu::CallbackTrait for GlassCallback {
         resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
         if let Some(res) = resources.get::<GlassResources>() {
-            queue.write_buffer(&res.uniform_buffer, 0, bytemuck::cast_slice(&[self.uniforms]));
+            queue.write_buffer(
+                &res.uniform_buffer,
+                0,
+                bytemuck::cast_slice(&[self.uniforms]),
+            );
         }
         Vec::new()
     }

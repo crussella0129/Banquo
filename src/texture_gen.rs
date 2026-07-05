@@ -99,9 +99,9 @@ pub fn generate_concrete_dark_texture(width: usize, height: usize) -> egui::Colo
         let size = rng.random_range(1..=2); // smaller dots
         let color_choice = rng.random_range(0..3);
         let color = match color_choice {
-            0 => egui::Color32::from_rgb(0, 0, 0),      // Blackish
-            1 => egui::Color32::from_rgb(80, 50, 30),   // Orange/Rust (darker)
-            _ => egui::Color32::from_rgb(40, 30, 25),   // Brown (darker)
+            0 => egui::Color32::from_rgb(0, 0, 0),    // Blackish
+            1 => egui::Color32::from_rgb(80, 50, 30), // Orange/Rust (darker)
+            _ => egui::Color32::from_rgb(40, 30, 25), // Brown (darker)
         };
 
         for dy in 0..size {

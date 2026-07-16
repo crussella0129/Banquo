@@ -5,6 +5,23 @@ future work; later sprints' "ignored-ADR" review screens against this log.
 
 ---
 
+## 2026-07-16 — ADR-013: Appearance as data — ThemeSpec engine, portable embedded presets, deep-merge application, addressable config — *Accepted* (sprint 19)
+
+**Context.** Themes were six string-matches scattered through the Face; presets were TOML files carrying the author's personal font paths, loaded relative to the process CWD (repo-checkout-only), and applying one *replaced* the user's entire config. `banquo compose --check` reported "valid" for unparseable files (lenient `load()` can't fail). ADR-006 already said machine-specific font data belongs in the user's config, not distributed artifacts — the shipped presets violated it.
+
+**Decision.**
+1. **Theme = data (`theme.rs`).** A `ThemeSpec { background, texture: TextureKind, fg_remap, cursor, cursor_text }` is everything theme-dependent the Face paints. Six builtin specs are a table, colors locked (by test) to the pre-refactor values; theme names normalize (lowercase, `_`/space→`-`, legacy `volcanic` alias). A `[colors]` config section (`#RRGGBB[AA]` strings) overlays the active spec — **custom themes are pure TOML**, with unknown theme names falling back to the zircon base. The Face caches one resolved spec + one texture keyed by `TextureKind`.
+2. **Presets = portable appearance bundles (`presets.rs`).** Theme + `[window]` + `[ui]` only — never fonts, never `[shell]`, never absolute paths (test-enforced). The six builtins are embedded via `include_str!` (single source of truth with `configs/`); user presets live in `presets/` **next to the active config file** and shadow builtins by name. Nothing resolves against the CWD.
+3. **Application = deep TOML-table merge** (`BanquoConfig::apply_preset`): a preset overrides exactly the keys it declares, recursively; arrays/scalars replace wholesale. The user's `[shell]`, font paths, and sizes survive every preset switch (test-enforced contract).
+4. **Config is addressable and honestly validated.** `BANQUO_CONFIG` overrides the config path everywhere (GUI, watcher, save, CLI) — the dotfiles/GitHub workflow without any network code. `load_strict()` returns real TOML errors (missing file = defaults, not an error); the GUI keeps lenient `load()`. `validate_str()` yields typed diagnostics: errors (parse, shape, unresolved `shell.default`) and warnings (unknown keys, missing font files, non-builtin theme, opacity range, bad hex).
+5. **Command surface.** CLI: `banquo check` (exit code = errors), `preset list|apply`, `config init [--preset|--force]|path|show`; `compose --check` is a hidden deprecated alias. Palette: `theme`/`preset`/`shell` verbs through a pure parser, resolving via the same presets module, with visible feedback and a suggestions hint line — no silently ignored input. Dead config surface removed: `[grid] mode`, `fonts.ui_path`, `fonts.serif_path` (old configs still parse; the validator warns).
+
+**Honesty corrections (guarantee #6).** README/docs no longer claim live WGSL shader effects (`render/` is explicitly experimental, unwired) nor the fictional grid-mode engine. Known limitation, documented: the Windows release binary is GUI-subsystem, so CLI output in a console is visible only when piped/redirected; a future `banquo-cli` console binary (needs a lib+bin split) is the candidate fix.
+
+**Consequences.** Adding most themes requires zero code (name + `[colors]`; share as a user preset file); a new *builtin* is three data-table entries. Preset switching is safe by construction. The config file is a portable, versionable artifact. The unsafe-free guarantee (ADR-002) and truth/appearance seam (ADR-003) are untouched — everything here is appearance-side pure data handling.
+
+---
+
 ## 2026-06-20 — ADR-012: Full launch-independence via a safe job-breakaway relaunch guard — *Accepted* (sprint 12) — *completes ADR-011*
 
 **Context.** ADR-011 made the release binary GUI-subsystem (no console window), and it empirically survives its launching shell exiting — including inside a Windows Terminal tab. The one residual way a host could still take Banquo down: parenting it in a Win32 **job object** with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` (all in-job processes, GUI included, die when the job's handles close). ADR-011 deferred this case; this is its resolution. ADR-002 (`#![forbid(unsafe_code)]`) forbids the obvious Win32 approach.

@@ -18,3 +18,4 @@
 - [x] T-1911 (sprint 19, completed 2026-07-16): repo hygiene — removed test_nan.exe/.pdb/.rs (git rm), banquo_stderr.txt, unused windows-sys dep — modified: repo root, Cargo.toml
 - [x] T-1912 (sprint 19, completed 2026-07-16): README rewritten (config init quick start, [colors]/presets/CLI/dotfiles features, WGSL honesty note), install.ps1 bootstrap notes + CLI hints — modified: README.md, install.ps1
 - [x] T-1913 (sprint 19, completed 2026-07-16): docs overhaul — configuration.md rewritten ([colors], presets, BANQUO_CONFIG, CLI, validator table; [grid]/reserved fields removed), themes.md custom-themes + honesty note, keybindings.md palette verbs, installation.md config init, architecture.md new modules + data-driven theme guide, troubleshooting.md refreshed — modified: docs/*
+- [x] T-1914 (sprint 19, completed 2026-07-16): ADR-013 recorded (ThemeSpec engine, portable presets, deep merge, BANQUO_CONFIG, CLI set) — modified: decisions.md

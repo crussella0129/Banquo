@@ -91,3 +91,30 @@ fn test_crate_root_forbids_unsafe() {
         "src/main.rs line 1 must be #![forbid(unsafe_code)]"
     );
 }
+
+/// Sprint 19 (T-1904): the shipped presets directory contains exactly the six
+/// canonical builtin presets — no strays, no legacy spellings.
+#[test]
+fn test_configs_dir_exactly_six_presets() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("configs");
+    let mut stems: Vec<String> = fs::read_dir(&dir)
+        .expect("configs/ exists")
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("toml"))
+        .filter_map(|p| p.file_stem().and_then(|s| s.to_str()).map(String::from))
+        .collect();
+    stems.sort();
+    assert_eq!(
+        stems,
+        vec![
+            "blanco",
+            "concrete",
+            "concrete-dark",
+            "primordial",
+            "volcanic-glass",
+            "zircon"
+        ],
+        "configs/ must hold exactly the six canonical presets"
+    );
+}

@@ -622,7 +622,14 @@ serif_path = "C:/old/serif.ttf"
 
     #[test]
     fn test_load_strict_bad_toml_err() {
-        let dir = std::env::temp_dir().join(format!("banquo_cfg_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "banquo_cfg_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("bad.toml");
         std::fs::write(&path, "= bad").unwrap();

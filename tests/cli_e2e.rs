@@ -180,6 +180,43 @@ fn test_e2e_config_show_roundtrips() {
         value.get("theme").and_then(|v| v.as_str()),
         Some("concrete")
     );
+    // Tables must survive the round-trip too (dotfiles-export contract).
+    assert_eq!(
+        value
+            .get("fonts")
+            .and_then(|f| f.get("size"))
+            .and_then(|v| v.as_float()),
+        Some(18.0)
+    );
+}
+
+#[test]
+fn test_e2e_check_error_diagnostic_nonzero() {
+    // Valid TOML but an Error diagnostic (unresolved shell.default) — a
+    // different branch than the parse-error path.
+    let home = TestHome::new("check_error_diag");
+    std::fs::write(home.config_path(), "[shell]\ndefault = \"ghost\"\n").unwrap();
+    let out = home.run(&["check"]);
+    assert!(!out.status.success(), "output: {}", all_output(&out));
+    assert!(
+        stdout(&out).contains("error:"),
+        "output: {}",
+        all_output(&out)
+    );
+}
+
+#[test]
+fn test_e2e_check_warning_only_exit0() {
+    // Warnings alone (unknown theme) must not fail the check.
+    let home = TestHome::new("check_warning_only");
+    std::fs::write(home.config_path(), "theme = \"mytheme\"\n").unwrap();
+    let out = home.run(&["check"]);
+    assert!(out.status.success(), "output: {}", all_output(&out));
+    assert!(
+        stdout(&out).contains("warning:"),
+        "output: {}",
+        all_output(&out)
+    );
 }
 
 #[test]
@@ -249,5 +286,14 @@ fn test_e2e_compose_alias() {
     assert!(
         String::from_utf8_lossy(&out.stderr).contains("deprecated"),
         "compose should print a deprecation note"
+    );
+
+    // "Behaves as check" includes the failure contract.
+    std::fs::write(home.config_path(), "= bad").unwrap();
+    let out2 = home.run(&["compose", "--check"]);
+    assert!(
+        !out2.status.success(),
+        "compose must propagate check's non-zero exit: {}",
+        all_output(&out2)
     );
 }

@@ -142,7 +142,16 @@ mod tests {
     #[test]
     fn test_presets_are_portable() {
         for (name, content) in BUILTINS {
-            for marker in ["monospace_path", "symbols_path", "[shell]", ":/", ":\\"] {
+            // `:/` and `:\\` catch Windows drive paths; `= "/` catches values
+            // rooted at a POSIX filesystem root.
+            for marker in [
+                "monospace_path",
+                "symbols_path",
+                "[shell]",
+                ":/",
+                ":\\",
+                "= \"/",
+            ] {
                 assert!(
                     !content.contains(marker),
                     "builtin preset {name} must not contain {marker:?}"
@@ -196,7 +205,14 @@ mod tests {
 
     #[test]
     fn test_find_in_prefers_user_dir() {
-        let dir = std::env::temp_dir().join(format!("banquo_presets_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "banquo_presets_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("zircon.toml"), "theme = \"zircon\"\n# user copy").unwrap();
 
@@ -222,7 +238,14 @@ mod tests {
 
     #[test]
     fn test_list_in_marks_user_presets() {
-        let dir = std::env::temp_dir().join(format!("banquo_preset_list_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "banquo_preset_list_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("mytheme.toml"), "theme = \"mytheme\"").unwrap();
 

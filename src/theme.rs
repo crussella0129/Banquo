@@ -271,12 +271,12 @@ mod tests {
     #[test]
     fn test_resolve_spec_background_override() {
         let c = cfg("zircon", "[colors]\nbackground = \"#101010\"");
-        let spec = resolve_spec(&c);
-        let builtin = builtin_spec("zircon").unwrap();
-        assert_eq!(spec.background, Color32::from_rgb(0x10, 0x10, 0x10));
-        assert_eq!(spec.cursor, builtin.cursor);
-        assert_eq!(spec.fg_remap, builtin.fg_remap);
-        assert_eq!(spec.texture, builtin.texture);
+        // Whole-struct equality: ONLY background may differ from the builtin.
+        let expected = ThemeSpec {
+            background: Color32::from_rgb(0x10, 0x10, 0x10),
+            ..builtin_spec("zircon").unwrap()
+        };
+        assert_eq!(resolve_spec(&c), expected);
     }
 
     #[test]

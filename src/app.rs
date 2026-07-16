@@ -684,26 +684,35 @@ impl App for BanquoApp {
         };
 
         if edge_style == "rounded" {
-            stroke_rect(rect, egui::Stroke::new(1.0, Color32::from_black_alpha(150)));
+            stroke_rect(
+                rect,
+                egui::Stroke::new(1.0_f32, Color32::from_black_alpha(150)),
+            );
         } else if edge_style == "beveled" {
             // Dark outer border (contrasts with light desktops)
-            stroke_rect(rect, egui::Stroke::new(1.5, Color32::from_black_alpha(200)));
+            stroke_rect(
+                rect,
+                egui::Stroke::new(1.5_f32, Color32::from_black_alpha(200)),
+            );
             // Light inner border (creates bevel pop against dark app background)
             let inset_rect = rect.shrink(1.5);
             stroke_rect(
                 inset_rect,
-                egui::Stroke::new(1.5, Color32::from_white_alpha(50)),
+                egui::Stroke::new(1.5_f32, Color32::from_white_alpha(50)),
             );
         } else if edge_style == "3d" {
             // Chunky CRT bezel effect
-            stroke_rect(rect, egui::Stroke::new(2.0, Color32::from_black_alpha(220)));
+            stroke_rect(
+                rect,
+                egui::Stroke::new(2.0_f32, Color32::from_black_alpha(220)),
+            );
             stroke_rect(
                 rect.shrink(2.0),
-                egui::Stroke::new(3.0, Color32::from_black_alpha(100)),
+                egui::Stroke::new(3.0_f32, Color32::from_black_alpha(100)),
             );
             stroke_rect(
                 rect.shrink(5.0),
-                egui::Stroke::new(1.5, Color32::from_white_alpha(50)),
+                egui::Stroke::new(1.5_f32, Color32::from_white_alpha(50)),
             );
         }
 
@@ -796,7 +805,7 @@ impl App for BanquoApp {
                             Color32::from_gray(128)
                         };
 
-                        let stroke = egui::Stroke::new(1.5, cross_color);
+                        let stroke = egui::Stroke::new(1.5_f32, cross_color);
                         let p1 = close_rect.center() - Vec2::new(4.0, 4.0);
                         let p2 = close_rect.center() + Vec2::new(4.0, 4.0);
                         ui.painter().line_segment([p1, p2], stroke);

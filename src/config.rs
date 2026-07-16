@@ -134,6 +134,40 @@ pub struct MacosConfig {
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct LinuxConfig {}
 
+/// Recursively merge `overlay` into `base`: tables merge key-by-key with the
+/// overlay winning on conflicts; scalars and arrays replace wholesale. This is
+/// the preset-application primitive — a preset overrides exactly the keys it
+/// declares and nothing else.
+fn merge_toml(base: &mut toml::Value, overlay: toml::Value) {
+    match (base, overlay) {
+        (toml::Value::Table(b), toml::Value::Table(o)) => {
+            for (k, v) in o {
+                match b.get_mut(&k) {
+                    Some(slot) => merge_toml(slot, v),
+                    None => {
+                        b.insert(k, v);
+                    }
+                }
+            }
+        }
+        (slot, v) => *slot = v,
+    }
+}
+
+impl BanquoConfig {
+    /// Apply a preset (TOML text) over this config, returning the merged
+    /// config. The preset's keys win; everything it doesn't mention — the
+    /// user's `[shell]`, font paths, sizes — survives untouched. On any
+    /// parse/serialize error the original config is left unchanged.
+    pub fn apply_preset(&self, preset_toml: &str) -> anyhow::Result<BanquoConfig> {
+        let overlay: toml::Value = toml::from_str(preset_toml)?;
+        let base_str = toml::to_string(self)?;
+        let mut base: toml::Value = toml::from_str(&base_str)?;
+        merge_toml(&mut base, overlay);
+        Ok(base.try_into()?)
+    }
+}
+
 impl BanquoConfig {
     /// Loads the configuration from the OS-specific config directory.
     /// If the file does not exist or is invalid, returns the default config.
@@ -278,5 +312,96 @@ command = "cmd.exe"
         assert!(p.args.is_empty());
         assert!(p.cwd.is_none());
         assert!(p.env.is_none());
+    }
+
+    // --- T-1906: preset application = deep merge, never replace ---
+
+    fn user_config() -> BanquoConfig {
+        toml::from_str(
+            r#"
+theme = "zircon"
+
+[fonts]
+size = 22.0
+monospace_path = "C:/fonts/MyMono.ttf"
+
+[window]
+edge_style = "flat"
+
+[shell]
+default = "pwsh"
+
+[[shell.profiles]]
+name = "pwsh"
+command = "pwsh.exe"
+args = ["-NoLogo"]
+"#,
+        )
+        .expect("valid user config")
+    }
+
+    #[test]
+    fn test_apply_preset_preserves_shell() {
+        let user = user_config();
+        let merged = user
+            .apply_preset(crate::presets::builtin("blanco").unwrap())
+            .expect("merge succeeds");
+        assert_eq!(merged.shell.default.as_deref(), Some("pwsh"));
+        assert_eq!(merged.shell.profiles.len(), 1);
+        assert_eq!(merged.shell.profiles[0].args, vec!["-NoLogo".to_string()]);
+        // And the preset did take effect.
+        assert_eq!(merged.theme.as_deref(), Some("blanco"));
+    }
+
+    #[test]
+    fn test_apply_preset_overrides_window() {
+        let user = user_config();
+        let merged = user
+            .apply_preset("theme = \"blanco\"\n[window]\nedge_style = \"beveled\"")
+            .unwrap();
+        assert_eq!(merged.window.edge_style.as_deref(), Some("beveled"));
+    }
+
+    #[test]
+    fn test_apply_preset_keeps_user_font_size() {
+        let user = user_config();
+        let merged = user
+            .apply_preset(crate::presets::builtin("concrete").unwrap())
+            .unwrap();
+        assert_eq!(merged.fonts.size, Some(22.0));
+        assert_eq!(
+            merged.fonts.monospace_path.as_deref(),
+            Some("C:/fonts/MyMono.ttf")
+        );
+    }
+
+    #[test]
+    fn test_apply_preset_invalid_toml_errors() {
+        let user = user_config();
+        assert!(user.apply_preset("= not toml").is_err());
+        // Original untouched (apply_preset borrows immutably by design).
+        assert_eq!(user.theme.as_deref(), Some("zircon"));
+    }
+
+    #[test]
+    fn test_merge_toml_recurses_tables() {
+        let user = user_config();
+        // Preset sets only window.radius; edge_style must survive the merge.
+        let merged = user.apply_preset("[window]\nradius = 12.0").unwrap();
+        assert_eq!(merged.window.radius, Some(12.0));
+        assert_eq!(merged.window.edge_style.as_deref(), Some("flat"));
+    }
+
+    #[test]
+    fn test_preset_apply_pipeline() {
+        // Component-B integration: the "preset switch never destroys personal
+        // config" contract, over a real builtin preset.
+        let user = user_config();
+        let preset = crate::presets::builtin("blanco").unwrap();
+        let merged = user.apply_preset(preset).unwrap();
+        assert_eq!(merged.theme.as_deref(), Some("blanco"));
+        assert_eq!(merged.window.corner_style.as_deref(), Some("g3"));
+        assert_eq!(merged.fonts.size, Some(22.0));
+        assert_eq!(merged.shell.default.as_deref(), Some("pwsh"));
     }
 }

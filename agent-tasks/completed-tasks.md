@@ -10,3 +10,4 @@
 - [x] T-1903 (sprint 19, completed 2026-07-16): Face consumes ThemeSpec; texture cache keyed by TextureKind — modified: src/app.rs, src/texture_gen.rs, src/theme.rs
 - [x] T-1904 (sprint 19, completed 2026-07-16): Presets rewritten portable (no personal data), concrete-dark added, canonical hyphenated names, fixed->persistent tab bar — modified: configs/*
 - [x] T-1905 (sprint 19, completed 2026-07-16): presets.rs — embedded builtins via include_str!, user preset dir lookup, list with provenance — modified: src/presets.rs, src/main.rs
+- [x] T-1906 (sprint 19, completed 2026-07-16): deep TOML merge + BanquoConfig::apply_preset (preset keys win, user config survives) — modified: src/config.rs

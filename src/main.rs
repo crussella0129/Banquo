@@ -23,6 +23,7 @@ mod metrics;
 pub mod os;
 pub mod render;
 pub mod texture_gen;
+mod theme;
 
 use clap::{Parser, Subcommand};
 

@@ -2,3 +2,7 @@
 - [x] Modify `src/render/mod.rs`: Change `multiview_mask: 0,` to `multiview_mask: None,`.
 - [x] Fix `fonts.rs` to only inject `BANQUO_MONO` into the font fallback arrays if `defs.font_data.contains_key(BANQUO_MONO)`.
 - [x] Modify `install.ps1` to scaffold `banquo.toml` using `configs\zircon.toml`.
+- [x] (sprint 17/18 stale backlog, closed 2026-07-16) Modify `config.rs` (size, opacity) — shipped in fe18a96.
+- [x] (sprint 17/18 stale backlog, closed 2026-07-16) Modify `texture_gen.rs` (concrete-dark) — shipped in fe18a96.
+- [x] (sprint 17/18 stale backlog, closed 2026-07-16) Modify `app.rs` (font size logic, opacity tint, theme mapping) — shipped in fe18a96.
+- [x] T-1901 (sprint 19, completed 2026-07-16): Create src/theme.rs — TextureKind, ThemeSpec, six builtin specs, name normalization, hex parsing — modified: src/theme.rs, src/main.rs

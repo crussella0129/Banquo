@@ -243,7 +243,6 @@ dependencies = [
  "toml",
  "wgpu",
  "window-vibrancy",
- "windows-sys 0.61.2",
 ]
 
 [[package]]

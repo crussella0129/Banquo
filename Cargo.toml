@@ -76,9 +76,6 @@ notify = "6"
 window-vibrancy = "0.7.1"
 raw-window-handle = "0.6"
 
-[target."cfg(windows)".dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }
-
 [profile.release]
 opt-level = 3
 lto = "thin"

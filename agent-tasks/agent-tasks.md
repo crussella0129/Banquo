@@ -1,6 +1,5 @@
 # Agent Tasks (Persistent Backlog)
 
-- [ ] T-1907 (sprint 19): `BANQUO_CONFIG` env override + `load_strict` — touches: src/config.rs
 - [ ] T-1908 (sprint 19): `validate()` diagnostics + dead-field removal — touches: src/config.rs, src/theme.rs
 - [ ] T-1909 (sprint 19): CLI restructure (check, preset, config subcommands; compose alias) — touches: src/main.rs, tests/cli_e2e.rs
 - [ ] T-1910 (sprint 19): Palette command parsing, feedback, suggestions — touches: src/app.rs

@@ -169,50 +169,69 @@ impl BanquoConfig {
 }
 
 impl BanquoConfig {
-    /// Loads the configuration from the OS-specific config directory.
-    /// If the file does not exist or is invalid, returns the default config.
+    /// Loads the configuration leniently: any failure logs to stderr and
+    /// falls back to defaults. This is the GUI path — the window must open
+    /// even with a broken config. `banquo check` reports what's wrong.
     pub fn load() -> Self {
-        let config_path = Self::get_config_path();
-
-        if let Some(path) = config_path {
-            if path.exists() {
-                if let Ok(content) = fs::read_to_string(&path) {
-                    if let Ok(config) = toml::from_str(&content) {
-                        return config;
-                    } else {
-                        eprintln!(
-                            "banquo: Failed to parse TOML at {:?}. Falling back to defaults.",
-                            path
-                        );
-                    }
-                } else {
-                    eprintln!(
-                        "banquo: Failed to read config file at {:?}. Falling back to defaults.",
-                        path
-                    );
-                }
+        match Self::load_strict() {
+            Ok(config) => config,
+            Err(e) => {
+                eprintln!("banquo: {e:#}. Falling back to defaults.");
+                Self::default()
             }
         }
-
-        Self::default()
     }
 
-    /// Saves the configuration back to the file.
+    /// Loads the configuration strictly: read/parse failures are real errors
+    /// carrying the TOML parser's message. A *missing* file is not an error —
+    /// it means "defaults", exactly like a fresh install.
+    pub fn load_strict() -> anyhow::Result<Self> {
+        match Self::config_path() {
+            Some(path) => Self::load_strict_from(&path),
+            None => Ok(Self::default()),
+        }
+    }
+
+    /// [`Self::load_strict`] against an explicit path (unit-testable).
+    pub fn load_strict_from(path: &std::path::Path) -> anyhow::Result<Self> {
+        use anyhow::Context;
+        if !path.exists() {
+            return Ok(Self::default());
+        }
+        let content = fs::read_to_string(path)
+            .with_context(|| format!("failed to read config at {}", path.display()))?;
+        let config = toml::from_str(&content)
+            .with_context(|| format!("failed to parse config at {}", path.display()))?;
+        Ok(config)
+    }
+
+    /// Saves the configuration back to the active config path.
     pub fn save(&self) -> std::io::Result<()> {
-        if let Some(path) = Self::get_config_path() {
+        if let Some(path) = Self::config_path() {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent)?;
             }
-            if let Ok(content) = toml::to_string(self) {
-                fs::write(&path, content)?;
-            }
+            let content = toml::to_string(self).map_err(std::io::Error::other)?;
+            fs::write(&path, content)?;
         }
         Ok(())
     }
 
-    /// Determines the config file path: `~/.config/banquo/banquo.toml` on Unix/macOS,
-    /// and `%APPDATA%\banquo\banquo.toml` on Windows.
-    fn get_config_path() -> Option<PathBuf> {
+    /// The active config file path: the `BANQUO_CONFIG` env var when set
+    /// (point it into a dotfiles clone to keep your config in git), otherwise
+    /// `~/.config/banquo/banquo.toml` on Unix/macOS or
+    /// `%APPDATA%\banquo\banquo.toml` on Windows.
+    pub fn config_path() -> Option<PathBuf> {
+        Self::config_path_from(std::env::var_os("BANQUO_CONFIG"))
+    }
+
+    /// Pure form of [`Self::config_path`]: resolve from an explicit env value.
+    pub fn config_path_from(env_val: Option<std::ffi::OsString>) -> Option<PathBuf> {
+        if let Some(v) = env_val {
+            if !v.is_empty() {
+                return Some(PathBuf::from(v));
+            }
+        }
         dirs::config_dir().map(|mut p| {
             p.push("banquo");
             p.push("banquo.toml");
@@ -222,8 +241,9 @@ impl BanquoConfig {
 
     /// Spawns a background thread that watches the config file for changes.
     /// When changed, it reloads the config and sends it down the channel.
+    /// Honors the `BANQUO_CONFIG` override like every other path user.
     pub fn watch(tx: std::sync::mpsc::Sender<BanquoConfig>) {
-        let config_path = Self::get_config_path();
+        let config_path = Self::config_path();
         if let Some(path) = config_path {
             std::thread::spawn(move || {
                 use notify::{RecursiveMode, Watcher};
@@ -338,6 +358,43 @@ args = ["-NoLogo"]
 "#,
         )
         .expect("valid user config")
+    }
+
+    // --- T-1907: config path resolution + strict loading ---
+
+    #[test]
+    fn test_config_path_from_env_override() {
+        let p = BanquoConfig::config_path_from(Some(std::ffi::OsString::from("C:/tmp/x.toml")));
+        assert_eq!(p, Some(PathBuf::from("C:/tmp/x.toml")));
+    }
+
+    #[test]
+    fn test_config_path_from_default() {
+        let p = BanquoConfig::config_path_from(None).expect("platform config dir exists");
+        let s = p.to_string_lossy().replace('\\', "/");
+        assert!(s.ends_with("banquo/banquo.toml"), "unexpected path: {s}");
+        // Empty env value falls back to the default too.
+        let p2 = BanquoConfig::config_path_from(Some(std::ffi::OsString::new()));
+        assert_eq!(p2, Some(p));
+    }
+
+    #[test]
+    fn test_load_strict_bad_toml_err() {
+        let dir = std::env::temp_dir().join(format!("banquo_cfg_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("bad.toml");
+        std::fs::write(&path, "= bad").unwrap();
+        let err = BanquoConfig::load_strict_from(&path).unwrap_err();
+        std::fs::remove_dir_all(&dir).ok();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("failed to parse config"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_load_strict_missing_file_ok_default() {
+        let path = std::env::temp_dir().join("banquo_definitely_missing_dir/banquo.toml");
+        let cfg = BanquoConfig::load_strict_from(&path).expect("missing file is not an error");
+        assert!(cfg.theme.is_none());
     }
 
     #[test]

@@ -46,8 +46,6 @@ pub struct ThemeSpec {
 }
 
 /// The canonical builtin theme names, in presentation order.
-// TODO(T-1905): consumed by the presets module; dead only until then.
-#[allow(dead_code)]
 pub const BUILTIN_NAMES: [&str; 6] = [
     "zircon",
     "blanco",

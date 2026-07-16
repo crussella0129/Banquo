@@ -21,6 +21,7 @@ mod core;
 mod fonts;
 mod metrics;
 pub mod os;
+mod presets;
 pub mod render;
 pub mod texture_gen;
 mod theme;

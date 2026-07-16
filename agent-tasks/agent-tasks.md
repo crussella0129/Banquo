@@ -1,6 +1,5 @@
 # Agent Tasks (Persistent Backlog)
 
-- [ ] T-1905 (sprint 19): Create `src/presets.rs` — embedded + user-dir preset lookup — touches: src/presets.rs, src/main.rs
 - [ ] T-1906 (sprint 19): Deep TOML merge + `BanquoConfig::apply_preset` — touches: src/config.rs
 - [ ] T-1907 (sprint 19): `BANQUO_CONFIG` env override + `load_strict` — touches: src/config.rs
 - [ ] T-1908 (sprint 19): `validate()` diagnostics + dead-field removal — touches: src/config.rs, src/theme.rs

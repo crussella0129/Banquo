@@ -175,11 +175,13 @@ pub struct BanquoApp {
     // Motion easing state
     smoothed_cursor_pos: Option<egui::Pos2>,
 
-    // Cached theme textures
-    texture_blanco: Option<egui::TextureHandle>,
-    texture_concrete: Option<egui::TextureHandle>,
-    texture_concrete_dark: Option<egui::TextureHandle>,
-    texture_primordial: Option<egui::TextureHandle>,
+    /// The resolved theme spec (builtin + `[colors]` overlay). Recomputed on
+    /// config change, never per frame.
+    theme_spec: crate::theme::ThemeSpec,
+    /// Which texture kind the cached handle was generated for.
+    texture_kind: Option<crate::theme::TextureKind>,
+    /// The cached procedural background texture (`None` for flat themes).
+    texture: Option<egui::TextureHandle>,
 }
 
 impl BanquoApp {
@@ -199,6 +201,7 @@ impl BanquoApp {
 
         // Resolve the configured default shell once (borrows config before move).
         let default_shell = crate::core::shell::resolve_shell(&config, None);
+        let theme_spec = crate::theme::resolve_spec(&config);
 
         Self {
             font_source,
@@ -216,10 +219,9 @@ impl BanquoApp {
             show_command_palette: false,
             palette_input: String::new(),
             smoothed_cursor_pos: None,
-            texture_blanco: None,
-            texture_concrete: None,
-            texture_concrete_dark: None,
-            texture_primordial: None,
+            theme_spec,
+            texture_kind: None,
+            texture: None,
         }
     }
 
@@ -290,26 +292,15 @@ impl BanquoApp {
         });
     }
 
-    /// Lazily generate procedural textures for themes if needed.
+    /// Lazily (re)generate the procedural background texture. The cache is
+    /// keyed by [`crate::theme::TextureKind`]: a new texture is created only
+    /// when the resolved kind differs from the cached one.
     fn ensure_textures(&mut self, ctx: &egui::Context) {
-        let theme = self.config.theme.as_deref().unwrap_or("zircon");
-
-        if theme == "blanco" && self.texture_blanco.is_none() {
-            let img = crate::texture_gen::generate_blanco_texture(4096, 4096);
-            self.texture_blanco =
-                Some(ctx.load_texture("blanco_bg", img, egui::TextureOptions::LINEAR));
-        } else if theme == "concrete" && self.texture_concrete.is_none() {
-            let img = crate::texture_gen::generate_concrete_texture(4096, 4096);
-            self.texture_concrete =
-                Some(ctx.load_texture("concrete_bg", img, egui::TextureOptions::LINEAR));
-        } else if theme == "concrete-dark" && self.texture_concrete_dark.is_none() {
-            let img = crate::texture_gen::generate_concrete_dark_texture(4096, 4096);
-            self.texture_concrete_dark =
-                Some(ctx.load_texture("concrete_dark_bg", img, egui::TextureOptions::LINEAR));
-        } else if theme == "primordial" && self.texture_primordial.is_none() {
-            let img = crate::texture_gen::generate_primordial_texture(4096, 4096);
-            self.texture_primordial =
-                Some(ctx.load_texture("primordial_bg", img, egui::TextureOptions::LINEAR));
+        let kind = self.theme_spec.texture;
+        if crate::texture_gen::needs_texture_regen(self.texture_kind, kind) {
+            self.texture = crate::texture_gen::generate(kind, 4096, 4096)
+                .map(|img| ctx.load_texture("banquo_theme_bg", img, egui::TextureOptions::LINEAR));
+            self.texture_kind = Some(kind);
         }
     }
 
@@ -394,6 +385,7 @@ impl App for BanquoApp {
             self.cell_metrics = None; // Force metrics recompute on font change
                                       // Re-resolve the default shell so future tabs honor the new config.
             self.default_shell = crate::core::shell::resolve_shell(&self.config, None);
+            self.theme_spec = crate::theme::resolve_spec(&self.config);
             ctx.request_repaint();
         }
 
@@ -435,29 +427,10 @@ impl App for BanquoApp {
         let corner_padding = (radius / 2.0).max(8.0);
         content_rect = content_rect.shrink(corner_padding);
 
-        let theme = self.config.theme.as_deref().unwrap_or("zircon");
         let size = self.config.fonts.size.unwrap_or(DEFAULT_MONO_SIZE);
 
         let opacity = window_cfg.opacity.unwrap_or(1.0);
-        let (mut bg_fill, bg_texture) = match theme {
-            "blanco" => (Color32::WHITE, self.texture_blanco.clone()),
-            "concrete" => (
-                Color32::from_rgb(180, 180, 180),
-                self.texture_concrete.clone(),
-            ),
-            "concrete-dark" => (
-                Color32::from_rgb(15, 15, 15),
-                self.texture_concrete_dark.clone(),
-            ),
-            "primordial" => (
-                Color32::from_black_alpha(204),
-                self.texture_primordial.clone(),
-            ),
-            "volcanic" | "volcanic glass" | "volcanic_glass" => {
-                (Color32::from_rgba_unmultiplied(0, 0, 0, 200), None)
-            }
-            _ => (Color32::from_black_alpha(142), None), // zircon with slightly more transparency
-        };
+        let (mut bg_fill, bg_texture) = (self.theme_spec.background, self.texture.clone());
 
         // Apply config-driven opacity to the background fill
         bg_fill = Color32::from_rgba_unmultiplied(
@@ -901,22 +874,7 @@ impl App for BanquoApp {
             let origin_x = ((content_rect.min.x + offset_x) * ppp).round() / ppp;
             let origin_y = ((content_rect.min.y + offset_y) * ppp).round() / ppp;
 
-            let theme = self.config.theme.as_deref().unwrap_or("zircon");
-            let is_volcanic = matches!(theme, "volcanic" | "volcanic glass" | "volcanic_glass");
-            let is_concrete = theme == "concrete";
-            let is_blanco = theme == "blanco";
-            let is_primordial = theme == "primordial";
-            let _px_offset = 1.0 / ctx.pixels_per_point();
-
-            let cursor_color = if is_concrete {
-                Color32::from_rgba_premultiplied(70, 70, 75, 180)
-            } else if is_volcanic {
-                Color32::from_rgba_premultiplied(180, 15, 15, 180)
-            } else if is_primordial {
-                Color32::from_rgba_premultiplied(160, 40, 200, 180)
-            } else {
-                Color32::from_rgba_premultiplied(235, 232, 226, 180)
-            };
+            let cursor_color = self.theme_spec.cursor;
 
             // Paint each cell (T-108).
             let paint_cols = cols.min(snapshot.cols);
@@ -944,29 +902,18 @@ impl App for BanquoApp {
                         if cell.ch != ' ' {
                             let mut fg = rgb_to_color32(cell.fg);
 
-                            // Check if foreground is a light grayscale (default text color)
-                            let r = fg.r() as i32;
-                            let g = fg.g() as i32;
-                            let b = fg.b() as i32;
-                            let is_default_text =
-                                (r - g).abs() < 20 && (r - b).abs() < 20 && r > 100;
-                            let has_custom_bg = bg != DEFAULT_BG;
-
-                            if is_concrete || is_blanco {
-                                // Override default foreground to very dark gray so it's clearly visible
-                                // BUT only do this if there's no custom background (e.g., a CLI highlight bar)
+                            // Themes may remap default (light-grayscale) text —
+                            // but never text over a custom background (e.g. a
+                            // CLI highlight bar), whose contrast must survive.
+                            if let Some(remap) = self.theme_spec.fg_remap {
+                                let r = fg.r() as i32;
+                                let g = fg.g() as i32;
+                                let b = fg.b() as i32;
+                                let is_default_text =
+                                    (r - g).abs() < 20 && (r - b).abs() < 20 && r > 100;
+                                let has_custom_bg = bg != DEFAULT_BG;
                                 if is_default_text && !has_custom_bg {
-                                    fg = Color32::from_rgb(15, 15, 20); // Near black
-                                }
-                            } else if is_volcanic {
-                                // Map light grayscale (default text) to blood red
-                                if is_default_text && !has_custom_bg {
-                                    fg = Color32::from_rgb(200, 10, 10); // True blood red, highly saturated
-                                }
-                            } else if is_primordial {
-                                // Map light grayscale (default text) to purple plasma
-                                if is_default_text && !has_custom_bg {
-                                    fg = Color32::from_rgb(160, 40, 200);
+                                    fg = remap;
                                 }
                             }
 
@@ -1027,11 +974,7 @@ impl App for BanquoApp {
 
                 // Paint the character under the cursor in the inverse color.
                 if cursor_ch != ' ' {
-                    let inverse_fg = if is_volcanic || is_concrete {
-                        Color32::WHITE // Pop against dark cursors
-                    } else {
-                        Color32::BLACK // Pop against bright cursor
-                    };
+                    let inverse_fg = self.theme_spec.cursor_text;
 
                     painter.text(
                         new_pos,
@@ -1181,6 +1124,7 @@ impl App for BanquoApp {
                                 ctx.set_fonts(defs);
                                 self.font_source = font_source;
                                 self.cell_metrics = None;
+                                self.theme_spec = crate::theme::resolve_spec(&self.config);
                             }
                             "shell" if parts.len() > 1 => {
                                 // Open a new tab running the named shell. Prefer a

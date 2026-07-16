@@ -11,9 +11,6 @@
 //! Everything here is pure and GUI-context-free, so it is unit-tested
 //! headlessly.
 
-// TODO(T-1903): remove once the Face consumes ThemeSpec (dead only until then).
-#![allow(dead_code)]
-
 use egui::Color32;
 
 /// Which procedural background texture a theme uses.
@@ -49,6 +46,8 @@ pub struct ThemeSpec {
 }
 
 /// The canonical builtin theme names, in presentation order.
+// TODO(T-1905): consumed by the presets module; dead only until then.
+#[allow(dead_code)]
 pub const BUILTIN_NAMES: [&str; 6] = [
     "zircon",
     "blanco",

@@ -7,3 +7,4 @@
 - [x] (sprint 17/18 stale backlog, closed 2026-07-16) Modify `app.rs` (font size logic, opacity tint, theme mapping) — shipped in fe18a96.
 - [x] T-1901 (sprint 19, completed 2026-07-16): Create src/theme.rs — TextureKind, ThemeSpec, six builtin specs, name normalization, hex parsing — modified: src/theme.rs, src/main.rs
 - [x] T-1902 (sprint 19, completed 2026-07-16): [colors] config section + resolve_spec overlay — modified: src/config.rs, src/theme.rs
+- [x] T-1903 (sprint 19, completed 2026-07-16): Face consumes ThemeSpec; texture cache keyed by TextureKind — modified: src/app.rs, src/texture_gen.rs, src/theme.rs

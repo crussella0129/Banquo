@@ -1,6 +1,28 @@
+use crate::theme::TextureKind;
 use rand::RngExt;
 
-pub fn generate_blanco_texture(width: usize, height: usize) -> egui::ColorImage {
+/// Should the Face regenerate its cached background texture?
+///
+/// Pure cache decision: regenerate exactly when the resolved kind differs from
+/// the cached one (`None` cached = nothing processed yet). Regenerating a
+/// `Flat` kind drops the texture (generate returns `None`).
+pub fn needs_texture_regen(cached: Option<TextureKind>, resolved: TextureKind) -> bool {
+    cached != Some(resolved)
+}
+
+/// Generate the procedural background for a texture kind. `Flat` themes have
+/// no texture (`None`); the Face paints their solid background fill instead.
+pub fn generate(kind: TextureKind, width: usize, height: usize) -> Option<egui::ColorImage> {
+    match kind {
+        TextureKind::Flat => None,
+        TextureKind::Blanco => Some(generate_blanco_texture(width, height)),
+        TextureKind::Concrete => Some(generate_concrete_texture(width, height)),
+        TextureKind::ConcreteDark => Some(generate_concrete_dark_texture(width, height)),
+        TextureKind::Primordial => Some(generate_primordial_texture(width, height)),
+    }
+}
+
+fn generate_blanco_texture(width: usize, height: usize) -> egui::ColorImage {
     let mut img =
         egui::ColorImage::new([width, height], vec![egui::Color32::WHITE; width * height]);
     let mut rng = rand::rng();
@@ -22,7 +44,7 @@ pub fn generate_blanco_texture(width: usize, height: usize) -> egui::ColorImage 
     img
 }
 
-pub fn generate_concrete_texture(width: usize, height: usize) -> egui::ColorImage {
+fn generate_concrete_texture(width: usize, height: usize) -> egui::ColorImage {
     let base_color = egui::Color32::from_rgb(130, 130, 130);
     let mut img = egui::ColorImage::new([width, height], vec![base_color; width * height]);
     let mut rng = rand::rng();
@@ -61,7 +83,7 @@ pub fn generate_concrete_texture(width: usize, height: usize) -> egui::ColorImag
     img
 }
 
-pub fn generate_primordial_texture(width: usize, height: usize) -> egui::ColorImage {
+fn generate_primordial_texture(width: usize, height: usize) -> egui::ColorImage {
     // 80% opacity black background
     let base_color = egui::Color32::from_black_alpha(204);
     let mut img = egui::ColorImage::new([width, height], vec![base_color; width * height]);
@@ -86,7 +108,7 @@ pub fn generate_primordial_texture(width: usize, height: usize) -> egui::ColorIm
     img
 }
 
-pub fn generate_concrete_dark_texture(width: usize, height: usize) -> egui::ColorImage {
+fn generate_concrete_dark_texture(width: usize, height: usize) -> egui::ColorImage {
     let base_color = egui::Color32::from_rgb(20, 20, 20);
     let mut img = egui::ColorImage::new([width, height], vec![base_color; width * height]);
     let mut rng = rand::rng();
@@ -123,4 +145,66 @@ pub fn generate_concrete_dark_texture(width: usize, height: usize) -> egui::Colo
     }
 
     img
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_none_kind() {
+        assert!(generate(TextureKind::Flat, 64, 64).is_none());
+    }
+
+    #[test]
+    fn test_generate_textured_kinds_dimensions() {
+        let kinds = [
+            (TextureKind::Blanco, egui::Color32::WHITE),
+            (
+                TextureKind::Concrete,
+                egui::Color32::from_rgb(130, 130, 130),
+            ),
+            (
+                TextureKind::ConcreteDark,
+                egui::Color32::from_rgb(20, 20, 20),
+            ),
+            (
+                TextureKind::Primordial,
+                egui::Color32::from_black_alpha(204),
+            ),
+        ];
+        for (kind, base) in kinds {
+            let img = generate(kind, 64, 64).expect("textured kind yields an image");
+            assert_eq!(img.size, [64, 64], "{kind:?} size");
+            // The base color survives somewhere (dots/noise never cover 100%).
+            // Concrete kinds add +/- noise to the base, so accept near-base too.
+            let near = |p: &egui::Color32| {
+                let d = |a: u8, b: u8| a.abs_diff(b);
+                d(p.r(), base.r()) <= 10 && d(p.g(), base.g()) <= 10 && d(p.b(), base.b()) <= 10
+            };
+            assert!(img.pixels.iter().any(near), "{kind:?} keeps its base color");
+        }
+    }
+
+    #[test]
+    fn test_texture_regen_decision() {
+        assert!(needs_texture_regen(None, TextureKind::Blanco));
+        assert!(!needs_texture_regen(
+            Some(TextureKind::Blanco),
+            TextureKind::Blanco
+        ));
+        assert!(needs_texture_regen(
+            Some(TextureKind::Blanco),
+            TextureKind::Concrete
+        ));
+        // Switching to a Flat theme must drop the texture (regen -> None).
+        assert!(needs_texture_regen(
+            Some(TextureKind::Concrete),
+            TextureKind::Flat
+        ));
+        assert!(!needs_texture_regen(
+            Some(TextureKind::Flat),
+            TextureKind::Flat
+        ));
+    }
 }

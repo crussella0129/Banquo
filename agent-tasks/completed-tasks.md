@@ -13,3 +13,4 @@
 - [x] T-1906 (sprint 19, completed 2026-07-16): deep TOML merge + BanquoConfig::apply_preset (preset keys win, user config survives) — modified: src/config.rs
 - [x] T-1907 (sprint 19, completed 2026-07-16): BANQUO_CONFIG env override + load_strict with real errors; save/watch honor override — modified: src/config.rs
 - [x] T-1908 (sprint 19, completed 2026-07-16): validate_str diagnostics (parse/shell/unknown-key/fonts/theme/opacity/hex) + removed dead GridConfig, ui_path, serif_path — modified: src/config.rs
+- [x] T-1909 (sprint 19, completed 2026-07-16): CLI restructure — banquo check / preset list|apply / config init|path|show, compose hidden alias; 11 E2E tests via CARGO_BIN_EXE — modified: src/main.rs, src/presets.rs, src/config.rs, tests/cli_e2e.rs

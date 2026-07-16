@@ -5,14 +5,11 @@
 //! machine-specific, so it is safe to share — commit one to a dotfiles repo,
 //! hand it to a friend, drop theirs into your presets directory.
 //!
-//! Lookup order: the user presets directory (`<config-dir>/banquo/presets/
-//! <name>.toml`) first, then the six builtins embedded via `include_str!`
+//! Lookup order: the user presets directory (`presets/` beside the active
+//! config file) first, then the six builtins embedded via `include_str!`
 //! (single source of truth with the repo's `configs/` files). Nothing is ever
 //! resolved relative to the process CWD — the palette and CLI work identically
 //! from an installed binary and a source checkout.
-
-// TODO(T-1909/T-1910): remove once the CLI and palette consume this module.
-#![allow(dead_code)]
 
 use crate::theme::normalize_name;
 use std::path::PathBuf;
@@ -63,13 +60,11 @@ pub struct Preset {
     pub source: PresetSource,
 }
 
-/// The user presets directory: `<config-dir>/banquo/presets`.
+/// The user presets directory: `presets/` next to the active config file
+/// (so `%APPDATA%\banquo\presets` by default, and — because it follows
+/// `BANQUO_CONFIG` — presets travel with a dotfiles-managed config).
 pub fn user_preset_dir() -> Option<PathBuf> {
-    dirs::config_dir().map(|mut p| {
-        p.push("banquo");
-        p.push("presets");
-        p
-    })
+    crate::config::BanquoConfig::config_path().and_then(|p| p.parent().map(|d| d.join("presets")))
 }
 
 /// Pure lookup over explicit directories (unit-testable, no ambient state):

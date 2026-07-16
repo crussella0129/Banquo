@@ -31,6 +31,7 @@ use clap::{Parser, Subcommand};
 #[derive(Parser, Debug)]
 #[command(name = "banquo")]
 #[command(about = "Banquo — a most beautiful terminal.")]
+#[command(version)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -38,12 +39,218 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Banquo Compose — The TOML Configurator tool
+    /// Validate the active config file and report diagnostics
+    Check,
+    /// List or apply appearance presets (builtin + user)
+    Preset {
+        #[command(subcommand)]
+        action: PresetAction,
+    },
+    /// Inspect, bootstrap, or export the config file
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
+    /// Deprecated alias for `check`
+    #[command(hide = true)]
     Compose {
-        /// Check if the `banquo.toml` configuration is valid
+        /// Ignored (kept for compatibility with `compose --check`)
         #[arg(long)]
         check: bool,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum PresetAction {
+    /// List available presets; user presets (from the presets/ directory
+    /// next to your config file) are marked
+    List,
+    /// Merge a preset into your config — only the keys the preset declares
+    /// change; your shell profiles and fonts survive
+    Apply {
+        /// Preset name (builtin or user), e.g. "zircon"
+        name: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum ConfigAction {
+    /// Create a fresh config file from a preset
+    Init {
+        /// Preset to start from
+        #[arg(long, default_value = "zircon")]
+        preset: String,
+        /// Overwrite an existing config file
+        #[arg(long)]
+        force: bool,
+    },
+    /// Print the active config file path (honors BANQUO_CONFIG)
+    Path,
+    /// Print the effective config as TOML — pipe it into a dotfiles repo
+    Show,
+}
+
+/// Run a console subcommand, returning the process exit code.
+fn run_command(command: Commands) -> i32 {
+    match command {
+        Commands::Check => run_check(),
+        Commands::Compose { .. } => {
+            eprintln!("banquo: `compose` is deprecated; use `banquo check`.");
+            run_check()
+        }
+        Commands::Preset { action } => match action {
+            PresetAction::List => {
+                for (name, is_user) in presets::list() {
+                    if is_user {
+                        println!("{name} (user)");
+                    } else {
+                        println!("{name}");
+                    }
+                }
+                0
+            }
+            PresetAction::Apply { name } => run_preset_apply(&name),
+        },
+        Commands::Config { action } => match action {
+            ConfigAction::Init { preset, force } => run_config_init(&preset, force),
+            ConfigAction::Path => match config::BanquoConfig::config_path() {
+                Some(path) => {
+                    println!("{}", path.display());
+                    0
+                }
+                None => {
+                    eprintln!("banquo: no config directory available on this platform");
+                    1
+                }
+            },
+            ConfigAction::Show => match config::BanquoConfig::load_strict() {
+                Ok(cfg) => match toml::to_string(&cfg) {
+                    Ok(s) => {
+                        print!("{s}");
+                        0
+                    }
+                    Err(e) => {
+                        eprintln!("banquo: failed to serialize config: {e}");
+                        1
+                    }
+                },
+                Err(e) => {
+                    eprintln!("banquo: {e:#}");
+                    1
+                }
+            },
+        },
+    }
+}
+
+/// `banquo check`: report diagnostics, exit non-zero on any error.
+fn run_check() -> i32 {
+    let (path, diags) = config::validate();
+    match &path {
+        Some(p) if p.exists() => println!("checking {}", p.display()),
+        Some(p) => {
+            println!(
+                "no config file at {} — defaults in effect (run `banquo config init`)",
+                p.display()
+            );
+            return 0;
+        }
+        None => {
+            println!("no config directory on this platform — defaults in effect");
+            return 0;
+        }
+    }
+    let mut errors = 0;
+    let mut warnings = 0;
+    for d in &diags {
+        match d.severity {
+            config::Severity::Error => {
+                errors += 1;
+                println!("error: {}", d.message);
+            }
+            config::Severity::Warning => {
+                warnings += 1;
+                println!("warning: {}", d.message);
+            }
+        }
+    }
+    if errors == 0 && warnings == 0 {
+        println!("config ok");
+    } else {
+        println!("{errors} error(s), {warnings} warning(s)");
+    }
+    if errors > 0 {
+        1
+    } else {
+        0
+    }
+}
+
+/// `banquo preset apply <name>`: deep-merge the preset into the config file.
+fn run_preset_apply(name: &str) -> i32 {
+    let Some(preset) = presets::find(name) else {
+        eprintln!("banquo: unknown preset \"{name}\" — try `banquo preset list`");
+        return 1;
+    };
+    let current = match config::BanquoConfig::load_strict() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("banquo: {e:#}\nfix the config (or `banquo config init --force`) first");
+            return 1;
+        }
+    };
+    let merged = match current.apply_preset(&preset.content) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("banquo: preset \"{name}\" failed to apply: {e:#}");
+            return 1;
+        }
+    };
+    if let Err(e) = merged.save() {
+        eprintln!("banquo: failed to save config: {e}");
+        return 1;
+    }
+    let path = config::BanquoConfig::config_path()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    let provenance = match &preset.source {
+        presets::PresetSource::Builtin => "builtin".to_string(),
+        presets::PresetSource::User(p) => format!("user preset at {}", p.display()),
+    };
+    println!("applied preset \"{name}\" ({provenance}) to {path}");
+    println!("presets only override the keys they declare; your shell/fonts survive");
+    0
+}
+
+/// `banquo config init [--preset <name>] [--force]`: bootstrap a launchable config.
+fn run_config_init(preset_name: &str, force: bool) -> i32 {
+    let Some(path) = config::BanquoConfig::config_path() else {
+        eprintln!("banquo: no config directory available on this platform");
+        return 1;
+    };
+    if path.exists() && !force {
+        eprintln!(
+            "banquo: {} already exists — pass --force to overwrite",
+            path.display()
+        );
+        return 1;
+    }
+    let Some(preset) = presets::find(preset_name) else {
+        eprintln!("banquo: unknown preset \"{preset_name}\" — try `banquo preset list`");
+        return 1;
+    };
+    if let Some(parent) = path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            eprintln!("banquo: failed to create {}: {e}", parent.display());
+            return 1;
+        }
+    }
+    if let Err(e) = std::fs::write(&path, &preset.content) {
+        eprintln!("banquo: failed to write {}: {e}", path.display());
+        return 1;
+    }
+    println!("created {} from preset \"{preset_name}\"", path.display());
+    0
 }
 
 /// The window's initial logical size. Milestone 2 is a real terminal — larger
@@ -54,18 +261,9 @@ fn main() -> Result<(), eframe::Error> {
     let cli = Cli::parse();
 
     if let Some(command) = cli.command {
-        match command {
-            Commands::Compose { check } => {
-                if check {
-                    println!("Banquo Compose: Checking config...");
-                    let _config = config::BanquoConfig::load();
-                    println!("Config loaded successfully. All parameters are valid.");
-                } else {
-                    println!("Banquo Compose: Missing --check flag. Try `banquo compose --help`.");
-                }
-            }
-        }
-        return Ok(());
+        // Console subcommands run (and exit) before ensure_detached(), so they
+        // keep the launching console (ADR-012).
+        std::process::exit(run_command(command));
     }
 
     // GUI path. Before creating any window or PTY, ensure we run outside the

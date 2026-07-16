@@ -125,12 +125,8 @@ pub struct MacosConfig {
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct LinuxConfig {}
 
-// The validation surface below is consumed by `banquo check` (T-1909); the
-// allows keep the intermediate commit green and are removed with that task.
 /// How bad a config finding is. `Error` = Banquo cannot honor the config
 /// (`banquo check` exits non-zero); `Warning` = it runs, but something is off.
-// TODO(T-1909): remove allow once `banquo check` consumes this.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
     Error,
@@ -138,15 +134,12 @@ pub enum Severity {
 }
 
 /// One finding from [`validate_str`].
-// TODO(T-1909): remove allow once `banquo check` consumes this.
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
     pub severity: Severity,
     pub message: String,
 }
 
-#[allow(dead_code)] // TODO(T-1909)
 impl Diagnostic {
     fn error(message: impl Into<String>) -> Self {
         Self {
@@ -164,13 +157,10 @@ impl Diagnostic {
 
 /// The top-level tables/keys `BanquoConfig` actually reads. Anything else in
 /// a config file is silently ignored by serde — the validator surfaces it.
-#[allow(dead_code)] // TODO(T-1909)
 const KNOWN_TOP_LEVEL_KEYS: [&str; 7] = ["theme", "fonts", "os", "window", "ui", "shell", "colors"];
 
 /// Validate config file *content*. Pure over the string except for font-path
 /// existence probes. This is the engine behind `banquo check`.
-// TODO(T-1909): remove allow once `banquo check` consumes this.
-#[allow(dead_code)]
 pub fn validate_str(content: &str) -> Vec<Diagnostic> {
     let mut out = Vec::new();
 
@@ -264,8 +254,6 @@ pub fn validate_str(content: &str) -> Vec<Diagnostic> {
 
 /// Validate the active config file (the `banquo check` entry point).
 /// A missing file is valid: it means defaults, like a fresh install.
-// TODO(T-1909): remove allow once `banquo check` consumes this.
-#[allow(dead_code)]
 pub fn validate() -> (Option<PathBuf>, Vec<Diagnostic>) {
     match BanquoConfig::config_path() {
         Some(path) if path.exists() => match fs::read_to_string(&path) {

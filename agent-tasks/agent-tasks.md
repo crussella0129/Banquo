@@ -1,6 +1,5 @@
 # Agent Tasks (Persistent Backlog)
 
-- [ ] T-1908 (sprint 19): `validate()` diagnostics + dead-field removal — touches: src/config.rs, src/theme.rs
 - [ ] T-1909 (sprint 19): CLI restructure (check, preset, config subcommands; compose alias) — touches: src/main.rs, tests/cli_e2e.rs
 - [ ] T-1910 (sprint 19): Palette command parsing, feedback, suggestions — touches: src/app.rs
 - [ ] T-1911 (sprint 19): Repo hygiene — remove stray test_nan.*, banquo_stderr.txt — touches: repo root

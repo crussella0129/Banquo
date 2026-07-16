@@ -10,8 +10,6 @@ pub struct BanquoConfig {
     #[serde(default)]
     pub fonts: FontConfig,
     #[serde(default)]
-    pub grid: GridConfig,
-    #[serde(default)]
     pub os: OsConfig,
     #[serde(default)]
     pub window: WindowAppearanceConfig,
@@ -101,17 +99,10 @@ impl Default for WindowAppearanceConfig {
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct FontConfig {
     pub monospace_path: Option<String>,
-    pub ui_path: Option<String>,
-    pub serif_path: Option<String>,
     pub symbols_path: Option<String>,
     pub offset_x: Option<f32>,
     pub offset_y: Option<f32>,
     pub size: Option<f32>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
-pub struct GridConfig {
-    pub mode: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
@@ -133,6 +124,160 @@ pub struct MacosConfig {
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct LinuxConfig {}
+
+// The validation surface below is consumed by `banquo check` (T-1909); the
+// allows keep the intermediate commit green and are removed with that task.
+/// How bad a config finding is. `Error` = Banquo cannot honor the config
+/// (`banquo check` exits non-zero); `Warning` = it runs, but something is off.
+// TODO(T-1909): remove allow once `banquo check` consumes this.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Severity {
+    Error,
+    Warning,
+}
+
+/// One finding from [`validate_str`].
+// TODO(T-1909): remove allow once `banquo check` consumes this.
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct Diagnostic {
+    pub severity: Severity,
+    pub message: String,
+}
+
+#[allow(dead_code)] // TODO(T-1909)
+impl Diagnostic {
+    fn error(message: impl Into<String>) -> Self {
+        Self {
+            severity: Severity::Error,
+            message: message.into(),
+        }
+    }
+    fn warning(message: impl Into<String>) -> Self {
+        Self {
+            severity: Severity::Warning,
+            message: message.into(),
+        }
+    }
+}
+
+/// The top-level tables/keys `BanquoConfig` actually reads. Anything else in
+/// a config file is silently ignored by serde — the validator surfaces it.
+#[allow(dead_code)] // TODO(T-1909)
+const KNOWN_TOP_LEVEL_KEYS: [&str; 7] = ["theme", "fonts", "os", "window", "ui", "shell", "colors"];
+
+/// Validate config file *content*. Pure over the string except for font-path
+/// existence probes. This is the engine behind `banquo check`.
+// TODO(T-1909): remove allow once `banquo check` consumes this.
+#[allow(dead_code)]
+pub fn validate_str(content: &str) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+
+    // 1. It must be TOML at all.
+    let value: toml::Value = match toml::from_str(content) {
+        Ok(v) => v,
+        Err(e) => {
+            out.push(Diagnostic::error(format!("TOML parse error: {e}")));
+            return out;
+        }
+    };
+
+    // 2. Unknown top-level keys (legacy fields like [grid] land here).
+    if let toml::Value::Table(table) = &value {
+        for key in table.keys() {
+            if !KNOWN_TOP_LEVEL_KEYS.contains(&key.as_str()) {
+                out.push(Diagnostic::warning(format!(
+                    "unknown top-level key `{key}` (ignored by Banquo)"
+                )));
+            }
+        }
+    }
+
+    // 3. It must deserialize into the config shape (type errors land here).
+    let config: BanquoConfig = match value.try_into() {
+        Ok(c) => c,
+        Err(e) => {
+            out.push(Diagnostic::error(format!("invalid config shape: {e}")));
+            return out;
+        }
+    };
+
+    // 4. The default shell must reference a defined profile.
+    if let Some(default) = config.shell.default.as_deref() {
+        if !config.shell.profiles.iter().any(|p| p.name == default) {
+            out.push(Diagnostic::error(format!(
+                "shell.default = \"{default}\" does not match any [[shell.profiles]] name"
+            )));
+        }
+    }
+
+    // 5. Configured font files should exist.
+    for (label, path) in [
+        ("fonts.monospace_path", &config.fonts.monospace_path),
+        ("fonts.symbols_path", &config.fonts.symbols_path),
+    ] {
+        if let Some(p) = path {
+            if !std::path::Path::new(p).exists() {
+                out.push(Diagnostic::warning(format!(
+                    "{label} points to a missing file: {p} (Banquo will fall back)"
+                )));
+            }
+        }
+    }
+
+    // 6. Unknown theme names are legal (custom themes) but worth flagging.
+    if let Some(theme) = config.theme.as_deref() {
+        if crate::theme::builtin_spec(theme).is_none() {
+            out.push(Diagnostic::warning(format!(
+                "theme \"{theme}\" is not a builtin; its base spec falls back to zircon \
+                 (customize it via [colors])"
+            )));
+        }
+    }
+
+    // 7. Ranges and color formats.
+    if let Some(opacity) = config.window.opacity {
+        if !(0.0..=1.0).contains(&opacity) {
+            out.push(Diagnostic::warning(format!(
+                "window.opacity = {opacity} is outside [0.0, 1.0] and will be clamped"
+            )));
+        }
+    }
+    for (label, val) in [
+        ("colors.background", &config.colors.background),
+        ("colors.foreground", &config.colors.foreground),
+        ("colors.cursor", &config.colors.cursor),
+        ("colors.cursor_text", &config.colors.cursor_text),
+    ] {
+        if let Some(s) = val {
+            if crate::theme::parse_hex_color(s).is_none() {
+                out.push(Diagnostic::warning(format!(
+                    "{label} = \"{s}\" is not a valid #RRGGBB or #RRGGBBAA color (ignored)"
+                )));
+            }
+        }
+    }
+
+    out
+}
+
+/// Validate the active config file (the `banquo check` entry point).
+/// A missing file is valid: it means defaults, like a fresh install.
+// TODO(T-1909): remove allow once `banquo check` consumes this.
+#[allow(dead_code)]
+pub fn validate() -> (Option<PathBuf>, Vec<Diagnostic>) {
+    match BanquoConfig::config_path() {
+        Some(path) if path.exists() => match fs::read_to_string(&path) {
+            Ok(content) => (Some(path), validate_str(&content)),
+            Err(e) => (
+                Some(path),
+                vec![Diagnostic::error(format!("failed to read config: {e}"))],
+            ),
+        },
+        other => (other, Vec::new()),
+    }
+}
 
 /// Recursively merge `overlay` into `base`: tables merge key-by-key with the
 /// overlay winning on conflicts; scalars and arrays replace wholesale. This is
@@ -358,6 +503,115 @@ args = ["-NoLogo"]
 "#,
         )
         .expect("valid user config")
+    }
+
+    // --- T-1908: validation diagnostics ---
+
+    fn errors(diags: &[Diagnostic]) -> usize {
+        diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .count()
+    }
+
+    fn warnings(diags: &[Diagnostic]) -> usize {
+        diags
+            .iter()
+            .filter(|d| d.severity == Severity::Warning)
+            .count()
+    }
+
+    #[test]
+    fn test_validate_parse_error() {
+        let diags = validate_str("= bad");
+        assert_eq!(errors(&diags), 1);
+        assert!(diags[0].message.contains("TOML parse error"));
+    }
+
+    #[test]
+    fn test_validate_shell_default_unresolved() {
+        let diags = validate_str("[shell]\ndefault = \"ghost\"");
+        assert_eq!(errors(&diags), 1);
+        assert!(diags.iter().any(|d| d.message.contains("ghost")));
+    }
+
+    #[test]
+    fn test_validate_unknown_top_level_key() {
+        let src = "[grid]\nmode = \"fixed\"";
+        let diags = validate_str(src);
+        assert_eq!(
+            errors(&diags),
+            0,
+            "legacy [grid] is a warning, not an error"
+        );
+        assert!(diags
+            .iter()
+            .any(|d| d.severity == Severity::Warning && d.message.contains("`grid`")));
+        // And the config still parses (serde tolerance).
+        let cfg: Result<BanquoConfig, _> = toml::from_str(src);
+        assert!(cfg.is_ok());
+    }
+
+    #[test]
+    fn test_validate_missing_font_file() {
+        let diags = validate_str("[fonts]\nmonospace_path = \"Z:/nope.ttf\"");
+        assert!(diags
+            .iter()
+            .any(|d| d.severity == Severity::Warning && d.message.contains("Z:/nope.ttf")));
+    }
+
+    #[test]
+    fn test_validate_unknown_theme_warns() {
+        let diags = validate_str("theme = \"mytheme\"");
+        assert_eq!(errors(&diags), 0);
+        assert!(diags
+            .iter()
+            .any(|d| d.severity == Severity::Warning && d.message.contains("mytheme")));
+    }
+
+    #[test]
+    fn test_validate_opacity_range() {
+        let diags = validate_str("[window]\nopacity = 1.5");
+        assert!(diags
+            .iter()
+            .any(|d| d.severity == Severity::Warning && d.message.contains("opacity")));
+    }
+
+    #[test]
+    fn test_validate_bad_hex_warns() {
+        let diags = validate_str("[colors]\ncursor = \"banana\"");
+        assert!(diags
+            .iter()
+            .any(|d| d.severity == Severity::Warning && d.message.contains("banana")));
+    }
+
+    #[test]
+    fn test_validate_clean_config_empty() {
+        // Every shipped preset validates without errors or warnings.
+        for name in crate::presets::builtin_names() {
+            let content = crate::presets::builtin(name).unwrap();
+            let diags = validate_str(content);
+            assert_eq!(errors(&diags), 0, "{name}: {diags:?}");
+            assert_eq!(warnings(&diags), 0, "{name}: {diags:?}");
+        }
+    }
+
+    #[test]
+    fn test_legacy_fields_still_parse() {
+        // Removed fields (grid table, fonts.ui_path/serif_path) must not
+        // break parsing of old config files.
+        let src = r#"
+theme = "zircon"
+
+[grid]
+mode = "fixed"
+
+[fonts]
+ui_path = "C:/old/ui.ttf"
+serif_path = "C:/old/serif.ttf"
+"#;
+        let cfg: BanquoConfig = toml::from_str(src).expect("legacy config parses");
+        assert_eq!(cfg.theme.as_deref(), Some("zircon"));
     }
 
     // --- T-1907: config path resolution + strict loading ---

@@ -19,6 +19,25 @@ pub struct BanquoConfig {
     pub ui: UiConfig,
     #[serde(default)]
     pub shell: ShellConfig,
+    #[serde(default)]
+    pub colors: ColorsConfig,
+}
+
+/// Optional color overrides layered on top of the active theme's spec.
+///
+/// Every field is a hex string (`"#RRGGBB"` or `"#RRGGBBAA"`). Set any subset;
+/// unset fields keep the theme's builtin value. Combined with a custom `theme`
+/// name this is how a user defines a whole theme in TOML — no recompile.
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub struct ColorsConfig {
+    /// Substrate fill behind the grid.
+    pub background: Option<String>,
+    /// Remap default (light-grayscale) terminal text to this color.
+    pub foreground: Option<String>,
+    /// Cursor block color.
+    pub cursor: Option<String>,
+    /// Color of the glyph painted under the cursor block.
+    pub cursor_text: Option<String>,
 }
 
 /// Which shells Banquo can launch and which one is the default.

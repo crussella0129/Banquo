@@ -120,6 +120,31 @@ pub fn builtin_spec(name: &str) -> Option<ThemeSpec> {
     Some(spec)
 }
 
+/// Resolve the spec the Face paints with: the builtin spec for the config's
+/// theme (zircon's for unknown/custom names — the pre-sprint-19 `_ =>`
+/// fallback), overlaid with any `[colors]` overrides. Invalid hex values are
+/// ignored here (the builtin value stands); `banquo check` reports them.
+pub fn resolve_spec(config: &crate::config::BanquoConfig) -> ThemeSpec {
+    let name = config.theme.as_deref().unwrap_or("zircon");
+    let mut spec = builtin_spec(name)
+        .unwrap_or_else(|| builtin_spec("zircon").expect("zircon is always a builtin"));
+
+    let colors = &config.colors;
+    if let Some(c) = colors.background.as_deref().and_then(parse_hex_color) {
+        spec.background = c;
+    }
+    if let Some(c) = colors.foreground.as_deref().and_then(parse_hex_color) {
+        spec.fg_remap = Some(c);
+    }
+    if let Some(c) = colors.cursor.as_deref().and_then(parse_hex_color) {
+        spec.cursor = c;
+    }
+    if let Some(c) = colors.cursor_text.as_deref().and_then(parse_hex_color) {
+        spec.cursor_text = c;
+    }
+    spec
+}
+
 /// Parse `#RRGGBB` or `#RRGGBBAA` (alpha unmultiplied). Anything else → `None`.
 pub fn parse_hex_color(s: &str) -> Option<Color32> {
     let hex = s.trim().strip_prefix('#')?;
@@ -231,6 +256,90 @@ mod tests {
         );
         assert_eq!(builtin_spec("zircon").unwrap().cursor_text, Color32::BLACK);
         assert_eq!(builtin_spec("blanco").unwrap().cursor_text, Color32::BLACK);
+    }
+
+    // --- T-1902: [colors] overlay resolution ---
+
+    fn cfg(theme: &str, colors_toml: &str) -> crate::config::BanquoConfig {
+        let src = format!("theme = \"{theme}\"\n{colors_toml}");
+        toml::from_str(&src).expect("valid TOML")
+    }
+
+    #[test]
+    fn test_resolve_spec_no_colors_section() {
+        let c = cfg("zircon", "");
+        assert_eq!(resolve_spec(&c), builtin_spec("zircon").unwrap());
+    }
+
+    #[test]
+    fn test_resolve_spec_background_override() {
+        let c = cfg("zircon", "[colors]\nbackground = \"#101010\"");
+        let spec = resolve_spec(&c);
+        let builtin = builtin_spec("zircon").unwrap();
+        assert_eq!(spec.background, Color32::from_rgb(0x10, 0x10, 0x10));
+        assert_eq!(spec.cursor, builtin.cursor);
+        assert_eq!(spec.fg_remap, builtin.fg_remap);
+        assert_eq!(spec.texture, builtin.texture);
+    }
+
+    #[test]
+    fn test_resolve_spec_foreground_sets_remap() {
+        let c = cfg("zircon", "[colors]\nforeground = \"#ff0000\"");
+        assert_eq!(
+            resolve_spec(&c).fg_remap,
+            Some(Color32::from_rgb(255, 0, 0))
+        );
+    }
+
+    #[test]
+    fn test_resolve_spec_unknown_theme_falls_back_zircon() {
+        let c = cfg("mytheme", "[colors]\nbackground = \"#223344\"");
+        let spec = resolve_spec(&c);
+        assert_eq!(spec.background, Color32::from_rgb(0x22, 0x33, 0x44));
+        // Everything not overridden comes from zircon.
+        assert_eq!(spec.cursor, builtin_spec("zircon").unwrap().cursor);
+        assert_eq!(spec.texture, TextureKind::Flat);
+    }
+
+    #[test]
+    fn test_resolve_spec_invalid_hex_ignored() {
+        let c = cfg("zircon", "[colors]\ncursor = \"banana\"");
+        assert_eq!(
+            resolve_spec(&c).cursor,
+            builtin_spec("zircon").unwrap().cursor
+        );
+    }
+
+    #[test]
+    fn test_theme_pipeline_config_to_spec() {
+        // Component-A integration: full TOML → BanquoConfig → resolve_spec.
+        let src = r##"
+theme = "volcanic_glass"
+
+[colors]
+cursor = "#ff00ff"
+"##;
+        let c: crate::config::BanquoConfig = toml::from_str(src).unwrap();
+        let spec = resolve_spec(&c);
+        // Alias normalized to volcanic-glass; cursor overridden; rest builtin.
+        assert_eq!(spec.cursor, Color32::from_rgb(255, 0, 255));
+        assert_eq!(
+            spec.fg_remap,
+            builtin_spec("volcanic-glass").unwrap().fg_remap
+        );
+    }
+
+    #[test]
+    fn test_colors_config_deserializes() {
+        let c = cfg(
+            "zircon",
+            "[colors]\nbackground = \"#000000\"\nforeground = \"#ffffff\"",
+        );
+        assert_eq!(c.colors.background.as_deref(), Some("#000000"));
+        assert_eq!(c.colors.foreground.as_deref(), Some("#ffffff"));
+        assert!(c.colors.cursor.is_none());
+        let plain = cfg("zircon", "");
+        assert!(plain.colors.background.is_none());
     }
 
     #[test]

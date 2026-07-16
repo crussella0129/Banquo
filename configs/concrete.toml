@@ -1,11 +1,7 @@
+# Concrete — the stone. Mid-grey procedural texture with dark/rust/brown
+# flecks. Portable appearance bundle (no fonts, no shell).
+
 theme = "concrete"
-
-[fonts]
-monospace_path = "C:/Users/charl/Downloads/VictorMono/VictorMonoNerdFontMono-Regular.ttf"
-symbols_path = "C:/Users/charl/Downloads/Terminus/TerminessNerdFontMono-Regular.ttf"
-
-[grid]
-mode = "fixed"
 
 [os.windows]
 blur = true
@@ -18,5 +14,5 @@ inset = 0.0
 
 [ui]
 top_margin = 0.0
-tab_bar_mode = "fixed"
+tab_bar_mode = "persistent"
 background_mode = "reveal"

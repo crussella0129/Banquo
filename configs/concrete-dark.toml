@@ -1,0 +1,17 @@
+# Concrete Dark — the slab. Near-black concrete with muted rust/brown
+# speckles. Portable appearance bundle (no fonts, no shell).
+
+theme = "concrete-dark"
+
+[os.windows]
+blur = true
+
+[window]
+edge_style = "beveled"
+corner_style = "g3"
+radius = 16.0
+inset = 0.0
+
+[ui]
+top_margin = 0.0
+tab_bar_mode = "persistent"

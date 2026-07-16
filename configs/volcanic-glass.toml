@@ -1,0 +1,17 @@
+# Volcanic Glass — the plasma. Near-true-black substrate, blood-red glyphs,
+# chunky CRT bezel. Portable appearance bundle (no fonts, no shell).
+
+theme = "volcanic-glass"
+
+[os.windows]
+blur = true
+
+[window]
+edge_style = "3d"
+corner_style = "square"
+radius = 0.0
+inset = 0.0
+
+[ui]
+top_margin = 0.0
+tab_bar_mode = "auto"

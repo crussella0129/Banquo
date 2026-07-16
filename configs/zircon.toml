@@ -1,11 +1,11 @@
+# Zircon — the glass. Transparent substrate; blur delegated to the OS
+# compositor. Banquo's default preset.
+#
+# Presets are portable appearance bundles: theme + window chrome + UI only.
+# They never carry font paths, shell profiles, or anything machine-specific —
+# applying one merges it over your config and leaves the rest untouched.
+
 theme = "zircon"
-
-[fonts]
-monospace_path = "C:/Users/charl/Downloads/Go-Mono/GoMonoNerdFontMono-Regular.ttf"
-symbols_path = "C:/Users/charl/Downloads/Terminus/TerminessNerdFontMono-Regular.ttf"
-
-[grid]
-mode = "fixed"
 
 [os.windows]
 blur = true

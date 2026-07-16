@@ -97,7 +97,10 @@ if ($AddToPath) {
     }
 }
 
-# 4. Bootstrap default configuration if missing
+# 4. Bootstrap default configuration if missing.
+# The presets are embedded in the binary itself, so this uses the same portable
+# zircon preset a user would get from `banquo config init` on any platform.
+# (Respects an existing config; never overwrites.)
 Write-Host "`n[4/4] Setting up default configuration..." -ForegroundColor Yellow
 $configDir = Join-Path $env:APPDATA 'banquo'
 $configFile = Join-Path $configDir 'banquo.toml'
@@ -107,7 +110,7 @@ if (-not (Test-Path $configFile)) {
     $defaultTheme = Join-Path $repoRoot 'configs\zircon.toml'
     if (Test-Path $defaultTheme) {
         Copy-Item -Path $defaultTheme -Destination $configFile -Force
-        Write-Host "  Created default config at $configFile (using Zircon theme)"
+        Write-Host "  Created default config at $configFile (zircon preset - portable, no machine-specific paths)"
     } else {
         Write-Host "  Warning: $defaultTheme not found, skipping default config setup." -ForegroundColor Red
     }
@@ -117,3 +120,7 @@ if (-not (Test-Path $configFile)) {
 
 Write-Host "`nDone. Launch Banquo from the Start menu, or run:" -ForegroundColor Green
 Write-Host "  $targetExe"
+Write-Host "`nUseful commands (run from the repo with 'cargo run --', or the installed exe):"
+Write-Host "  banquo check          validate your config"
+Write-Host "  banquo preset list    see available appearance presets"
+Write-Host "  banquo config path    where your config lives"

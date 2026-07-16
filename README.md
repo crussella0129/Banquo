@@ -25,11 +25,11 @@ Then launch **Banquo** from the Start menu.
 
 ```sh
 cargo build --release
-cp configs/zircon.toml ~/.config/banquo/banquo.toml   # or %APPDATA%\banquo\ on Windows
+./target/release/banquo config init    # bootstrap a config from the zircon preset
 ./target/release/banquo
 ```
 
-See [docs/installation.md](docs/installation.md) for the full guide.
+Banquo also runs with **zero config** — the config file is optional. See [docs/installation.md](docs/installation.md) for the full guide.
 
 ---
 
@@ -37,9 +37,26 @@ See [docs/installation.md](docs/installation.md) for the full guide.
 
 **Multi-tab terminal.** Each tab is an independent PTY session. Click `+` to add tabs, or use the command palette to open a tab on a specific shell.
 
-**Six built-in themes.** Zircon (glass), Blanco (canvas), Concrete (stone), Concrete Dark (slab), Primordial (abyss), Volcanic Glass (plasma). Switch live via the command palette or by editing your config file.
+**Six built-in themes, all data.** Zircon (glass), Blanco (canvas), Concrete (stone), Concrete Dark (slab), Primordial (abyss), Volcanic Glass (plasma). Switch live via the command palette (`Ctrl+Shift+P`, `theme blanco`) or `banquo preset apply blanco`.
 
-**Hot-reloading config.** Edit `banquo.toml` and changes take effect immediately. No restart needed. Fonts, themes, window chrome, shell defaults, and font size all reload live.
+**Custom themes in pure TOML.** The `[colors]` section overrides any theme's background, foreground, cursor, and cursor-text colors — no recompile:
+
+```toml
+theme = "midnight"        # any name you like
+
+[colors]
+background = "#0b1021e0"  # #RRGGBB or #RRGGBBAA
+foreground = "#7fdbca"
+cursor     = "#ffcb6b"
+```
+
+**Portable presets.** A preset is an appearance bundle (theme + window chrome + UI) with no font paths, no shell profiles, no personal data. The six builtins are embedded in the binary; drop extra `.toml` files into the `presets/` directory next to your config and they appear in `banquo preset list`. Applying a preset **merges** — it only overrides the keys it declares, so your shell profiles and fonts always survive.
+
+**A real CLI.** `banquo check` validates your config with honest exit codes and named diagnostics; `banquo config init` bootstraps a launchable config from any preset; `banquo config path`/`show` make the config easy to find and export; `banquo preset list`/`apply` manage presets.
+
+**Dotfiles/GitHub-friendly.** Set `BANQUO_CONFIG=~/dotfiles/banquo.toml` and Banquo reads, watches, and saves that file — your terminal config lives in your repo, along with the `presets/` directory beside it. `banquo config show` prints the effective config for sharing.
+
+**Hot-reloading config.** Edit `banquo.toml` and changes take effect immediately. No restart needed. Fonts, themes, colors, window chrome, shell defaults, and font size all reload live.
 
 **Configurable font size.** Set `[fonts] size = 22.0` for comfortable 4K usage. The entire grid geometry scales from this single value.
 
@@ -49,11 +66,26 @@ See [docs/installation.md](docs/installation.md) for the full guide.
 
 **Custom fonts.** Point `monospace_path` to any `.ttf` or `.otf` on your system. A separate `symbols_path` handles box-drawing characters.
 
-**Shell switching.** Configure named shell profiles or use `Ctrl+Shift+P` then `shell pwsh` to open a tab on any shell on your PATH, with zero config.
+**Shell switching.** Configure named shell profiles or use `Ctrl+Shift+P` then `shell pwsh` to open a tab on any shell on your PATH, with zero config. The palette shows suggestions as you type and tells you when it doesn't understand — nothing is silently ignored.
 
 **Frameless window.** Custom chrome with configurable edge styles (flat, beveled, 3D), corner styles (square, G1, G2, G3 squircle), and radius.
 
-**Custom WGSL shaders.** The Volcanic Glass theme drives real-time GPU effects (glyph aura, active-row radiance) through a `CallbackTrait` render pass.
+---
+
+## Keep Your Config in Git
+
+Banquo's entire configuration is one TOML file plus an optional `presets/` directory — made to live in a dotfiles repo:
+
+```sh
+# point Banquo at your dotfiles clone (set it in your shell profile)
+export BANQUO_CONFIG=~/dotfiles/banquo/banquo.toml   # $env:BANQUO_CONFIG on Windows
+
+banquo config path      # confirm where Banquo reads/writes
+banquo config show      # print the effective config (pipe it anywhere)
+banquo check            # validate before you commit
+```
+
+Presets you drop in `~/dotfiles/banquo/presets/` travel with the config and show up in `banquo preset list` as `(user)` entries.
 
 ---
 
@@ -94,6 +126,8 @@ cargo fmt --check
 ```
 
 Do not use `cargo run` as your daily terminal. It is the dev loop. The installed release binary is a standalone GUI process that survives shell closure. See [Troubleshooting](docs/troubleshooting.md) for why.
+
+Honesty note (guarantee #6): the WGSL glass pipeline in `src/render/` is **experimental and not yet wired into the frame** — no theme currently drives GPU shader effects. It stays in-tree for the Milestone 6 work; the features above list only what ships.
 
 ---
 

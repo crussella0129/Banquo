@@ -1,12 +1,14 @@
 # Themes
 
-Banquo ships six built-in themes. Each one is a complete configuration preset that sets the background material, window chrome, and compositor behavior. Set `theme = "<name>"` in your `banquo.toml` or switch live via the command palette (`Ctrl+Shift+P`, then type `theme <name>`).
+Banquo ships six built-in themes. Each has a matching **preset** — a portable appearance bundle (theme + window chrome + UI) embedded in the binary. Switch live via the command palette (`Ctrl+Shift+P`, then `theme <name>`), via `banquo preset apply <name>`, or by editing `banquo.toml` (hot-reloaded).
+
+Canonical names are lowercase and hyphenated (`concrete-dark`, `volcanic-glass`); legacy spellings (`volcanic_glass`, `volcanic glass`, bare `volcanic`) are accepted everywhere.
 
 ---
 
 ## Zircon (Default)
 
-**The Glass.** A transparent substrate that delegates blur to the OS compositor. The terminal floats over your desktop, letting wallpapers and windows bleed through. Text renders at near-full opacity with a subtle contrast scrim to keep antialiasing crisp against the transparent backdrop.
+**The Glass.** A transparent substrate that delegates blur to the OS compositor. The terminal floats over your desktop, letting wallpapers and windows bleed through. Text renders at near-full opacity so antialiasing stays crisp against the transparent backdrop.
 
 ```toml
 theme = "zircon"
@@ -66,7 +68,7 @@ Best paired with: `background_mode = "reveal"`, beveled edges, G3 corners.
 
 ## Concrete Dark
 
-**The Slab.** A near-black (95%) variant of Concrete with the same procedural noise pattern, but using a `rgb(20, 20, 20)` base and muted rust/brown speckles. For users who want a dark terminal with physical texture rather than flat black.
+**The Slab.** A near-black variant of Concrete with the same procedural noise pattern, but using a `rgb(20, 20, 20)` base and muted rust/brown speckles. For users who want a dark terminal with physical texture rather than flat black.
 
 ```toml
 theme = "concrete-dark"
@@ -103,12 +105,12 @@ Best paired with: `background_mode = "reveal"`, G3 corners, OS blur off.
 
 ## Volcanic Glass
 
-**The Plasma.** A near-true-black substrate (`rgba(0,0,0,200)`) with no procedural texture. On OLED monitors, dead pixels in the terminal's background physically turn off, making the window disappear into the bezel. The 3D edge style gives it a chunky CRT bezel feel.
+**The Plasma.** A near-true-black substrate (`rgba(0,0,0,200)`) with no procedural texture, and default text remapped to blood red. On OLED monitors, dead pixels in the terminal's background physically turn off, making the window disappear into the bezel. The 3D edge style gives it a chunky CRT bezel feel.
 
-The WGSL shader pipeline drives an iridescent red/purple aura on glyphs and an active-row radiance effect that pulses subtly around the cursor's current line.
+> An experimental WGSL shader pipeline for this theme (glyph aura, active-row radiance) lives in `src/render/` but is **not yet wired into the frame** — no GPU shader effects currently run. Honesty over marketing (guarantee #6).
 
 ```toml
-theme = "volcanic_glass"
+theme = "volcanic-glass"
 
 [window]
 edge_style = "3d"
@@ -120,6 +122,40 @@ tab_bar_mode = "auto"
 ```
 
 Best paired with: `edge_style = "3d"`, square corners, an OLED display.
+
+---
+
+## Custom Themes (pure TOML, no recompile)
+
+A theme name that isn't a builtin gives you a **custom theme**: it starts from the zircon base (transparent dark substrate, no texture) and takes its colors from your `[colors]` section:
+
+```toml
+theme = "midnight"
+
+[colors]
+background  = "#0b1021e0"   # RRGGBBAA — the alpha is your transparency
+foreground  = "#7fdbca"     # remap for default text
+cursor      = "#ffcb6b"
+cursor_text = "#000000"
+```
+
+`[colors]` also overrides *builtin* themes — e.g. keep concrete's texture but change its cursor:
+
+```toml
+theme = "concrete"
+
+[colors]
+cursor = "#c46a4a"
+```
+
+Rules of the overlay:
+
+- Every field accepts `#RRGGBB` or `#RRGGBBAA` (alpha unmultiplied).
+- Unset fields keep the theme's builtin value.
+- `foreground` only remaps *default* (light-grayscale) text; text over custom backgrounds (highlight bars, selections) keeps its colors, so contrast survives.
+- Invalid values are ignored at runtime; `banquo check` warns about them.
+
+To share a custom theme, put it in a preset: save the `theme` + `[colors]` (+ `[window]`, `[ui]`) fragment as `<name>.toml` in the `presets/` directory next to your config. It shows up in `banquo preset list` as `(user)` and friends can drop the same file into their presets directory.
 
 ---
 
@@ -137,9 +173,15 @@ Press `Ctrl+Shift+P` and type:
 theme zircon
 ```
 
-If a matching preset file exists in `configs/<name>.toml` in the Banquo source tree, the entire preset (theme, window chrome, fonts) is loaded. Otherwise, only the theme name is changed and other settings remain.
+The palette resolves the name against your user presets directory first, then the embedded builtins — it works identically from an installed binary and a source checkout. Applying a preset **merges**: only the keys the preset declares change; your `[shell]`, `[fonts]`, and `[colors]` survive. A name with no preset is set as a custom theme. The switch is saved to your config file immediately.
 
-The theme switch is saved to your config file immediately.
+### Via CLI
+
+```sh
+banquo preset apply blanco
+```
+
+Same merge semantics; the running Banquo hot-reloads the saved file.
 
 ---
 

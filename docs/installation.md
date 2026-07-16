@@ -34,7 +34,7 @@ cd Banquo
 2. Copies `banquo.exe` to `%LOCALAPPDATA%\Banquo\` (or your custom `-InstallDir`).
 3. Creates a Start-menu shortcut at `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Banquo.lnk`.
 4. Optionally creates a Desktop shortcut and adds the install dir to your user `PATH`.
-5. If no `%APPDATA%\banquo\banquo.toml` exists, copies `configs\zircon.toml` as the default config.
+5. If no `%APPDATA%\banquo\banquo.toml` exists, copies `configs\zircon.toml` as the default config — the same portable zircon preset `banquo config init` uses (no font paths or machine-specific data).
 
 ### After Install
 
@@ -55,15 +55,14 @@ cd Banquo
 cargo build --release
 ```
 
-Copy the binary and create your config:
+Copy the binary and bootstrap your config (the presets are embedded in the binary, so this works from any directory):
 
 ```sh
 cp target/release/banquo ~/.local/bin/
-mkdir -p ~/.config/banquo
-cp configs/zircon.toml ~/.config/banquo/banquo.toml
+banquo config init            # creates ~/.config/banquo/banquo.toml from the zircon preset
 ```
 
-Then launch with `~/.local/bin/banquo` or add `~/.local/bin` to your `PATH`.
+Then launch with `~/.local/bin/banquo` or add `~/.local/bin` to your `PATH`. The config file is optional — Banquo runs with defaults without one. To keep the config in a dotfiles repo instead, set `BANQUO_CONFIG` (see [Configuration](configuration.md)).
 
 ---
 

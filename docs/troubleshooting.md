@@ -14,26 +14,26 @@ You launched the debug build via `cargo run`. The debug build is a child process
 
 ## Config changes have no effect
 
-The config file must be in the correct location:
+First, ask Banquo where it actually reads from:
 
-| Platform | Path |
-|----------|------|
-| Windows  | `%APPDATA%\banquo\banquo.toml` |
-| macOS    | `~/.config/banquo/banquo.toml` |
-| Linux    | `~/.config/banquo/banquo.toml` |
+```sh
+banquo config path
+```
 
-Note: this is `%APPDATA%` (Roaming), **not** `%LOCALAPPDATA%`. The binary lives in `%LOCALAPPDATA%\Banquo\`, but the config lives in `%APPDATA%\banquo\`.
+That prints the active path — `%APPDATA%\banquo\banquo.toml` by default (`~/.config/banquo/banquo.toml` on Unix), or whatever `BANQUO_CONFIG` points at if you set it.
+
+Note: the default is `%APPDATA%` (Roaming), **not** `%LOCALAPPDATA%`. The binary lives in `%LOCALAPPDATA%\Banquo\`, but the config lives in `%APPDATA%\banquo\`.
 
 **Common mistakes:**
-- Placing the config in the Banquo source directory (`C:\Users\you\Banquo\banquo.toml`) instead of the AppData path.
-- Placing it in `%LOCALAPPDATA%\banquo\` instead of `%APPDATA%\banquo\`.
-- TOML syntax errors. Run `banquo compose --check` to validate.
+- Editing a file at a different path than `banquo config path` reports (e.g. a copy in the source tree).
+- A `BANQUO_CONFIG` set in one shell profile but not another, so different shells see different configs.
+- TOML syntax errors. Run `banquo check` — it prints the parser's error and exits non-zero.
 
 ---
 
 ## Font not loading / falling back to default
 
-Check stderr output (visible in `cargo run` or in `banquo_stderr.txt`):
+Run `banquo check` — a missing font file is reported as a warning with the exact path. At runtime the same failure logs to stderr (visible under `cargo run`):
 
 ```
 banquo: Failed to load font from C:/path/to/font.ttf; falling back.
@@ -73,7 +73,7 @@ Transparency is controlled by two independent settings:
 
 **Not transparent enough:** Decrease `opacity` toward `0.0` and ensure `blur = true`.
 
-**No transparency at all:** Make sure you are not using the `blanco` theme (which has an opaque white substrate). Switch to `zircon` or `volcanic_glass`.
+**No transparency at all:** Make sure you are not using the `blanco` theme (which has an opaque white substrate). Switch to `zircon` or `volcanic-glass`.
 
 ---
 
@@ -88,11 +88,22 @@ If blur is enabled in the config but not visible, Banquo is requesting it from t
 
 ---
 
-## Command palette `theme` command does not load full preset
+## Palette says "unknown preset" / "unknown command"
 
-When you type `theme concrete` in the command palette, Banquo tries to load `configs/concrete.toml` from the source directory relative to the current working directory. If you launched Banquo from a different directory (e.g. via the Start menu shortcut), the `configs/` directory is not in scope.
+The palette never silently ignores input — the hint line under the input tells you what it understood. `theme`, `preset`, and `shell` are the verbs; type one and the hint line lists matching names.
 
-**Fix:** The theme name is still applied (so the background color/texture changes), but the full preset (edge style, corner style, etc.) only loads if Banquo can find the `configs/` directory. For full control, edit your `banquo.toml` directly.
+The six builtin presets are embedded in the binary, so `theme concrete` works identically from an installed binary and a source checkout (nothing is loaded from the working directory). If a *user* preset isn't found, confirm it lives at `<config dir>/presets/<name>.toml` — check `banquo preset list`.
+
+## `banquo check` prints nothing on Windows (installed binary)
+
+The installed release `banquo.exe` is a GUI-subsystem app: launched from a console, its output doesn't attach to that console. Pipe or redirect to see it:
+
+```powershell
+banquo check | more
+banquo config show > my-config.toml
+```
+
+(The exit code is always honest either way. In a source checkout, `cargo run -- check` prints directly because debug builds keep the console.)
 
 ---
 

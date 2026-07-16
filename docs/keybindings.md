@@ -18,23 +18,19 @@ All other key combinations (including `Ctrl+C`, `Ctrl+D`, arrow keys, function k
 
 The command palette is a text input overlay activated by `Ctrl+Shift+P`. Type a command and press `Enter` to execute it. Press `Escape` to dismiss without executing.
 
+A hint line under the input shows the available verbs, and — once you type a verb — the matching preset/shell names. Unknown commands are never silently ignored: the palette stays open and shows what went wrong.
+
 ### Available Commands
 
 | Command | Example | Description |
 |---------|---------|-------------|
-| `theme <name>` | `theme volcanic_glass` | Switch to a built-in theme. If a matching preset file exists in `configs/<name>.toml`, the entire preset is loaded (theme, window chrome, fonts). Otherwise, only the theme name changes. The switch is saved to your config file. |
-| `shell <name>` | `shell pwsh` | Open a new tab running the named shell. Matches against configured `[[shell.profiles]]` first, then falls back to shells detected on your `PATH`. Unknown names are silently ignored. |
+| `theme <name>` | `theme volcanic-glass` | Switch theme. Resolves the name against your user presets directory first, then the embedded builtin presets (never the process working directory), and **merges** the preset — your shell profiles, fonts, and colors survive. A name with no preset is set as a custom theme (styled by `[colors]`). Saved to your config immediately. |
+| `preset <name>` | `preset blanco` | Strictly apply a preset bundle. Unknown names show an error in the palette. |
+| `shell <name>` | `shell pwsh` | Open a new tab running the named shell. Matches configured `[[shell.profiles]]` first, then shells detected on your `PATH`. Unknown names show visible feedback. |
 
-### Theme Names
+### Preset / Theme Names
 
-The following names are recognized by the `theme` command:
-
-- `zircon`
-- `blanco`
-- `concrete`
-- `concrete-dark`
-- `primordial`
-- `volcanic_glass`
+Builtins (always available): `zircon`, `blanco`, `concrete`, `concrete-dark`, `primordial`, `volcanic-glass` — plus any user presets from the `presets/` directory next to your config. Legacy spellings (`volcanic_glass`, bare `volcanic`) are accepted.
 
 ### Shell Names (Auto-Detected)
 

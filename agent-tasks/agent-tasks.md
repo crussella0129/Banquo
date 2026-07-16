@@ -1,6 +1,5 @@
 # Agent Tasks (Persistent Backlog)
 
-- [ ] T-1910 (sprint 19): Palette command parsing, feedback, suggestions — touches: src/app.rs
 - [ ] T-1911 (sprint 19): Repo hygiene — remove stray test_nan.*, banquo_stderr.txt — touches: repo root
 - [ ] T-1912 (sprint 19): README + install.ps1 update — touches: README.md, install.ps1
 - [ ] T-1913 (sprint 19): docs/ overhaul (configuration, themes, keybindings, installation, architecture, troubleshooting) — touches: docs/*

@@ -14,3 +14,4 @@
 - [x] T-1907 (sprint 19, completed 2026-07-16): BANQUO_CONFIG env override + load_strict with real errors; save/watch honor override — modified: src/config.rs
 - [x] T-1908 (sprint 19, completed 2026-07-16): validate_str diagnostics (parse/shell/unknown-key/fonts/theme/opacity/hex) + removed dead GridConfig, ui_path, serif_path — modified: src/config.rs
 - [x] T-1909 (sprint 19, completed 2026-07-16): CLI restructure — banquo check / preset list|apply / config init|path|show, compose hidden alias; 11 E2E tests via CARGO_BIN_EXE — modified: src/main.rs, src/presets.rs, src/config.rs, tests/cli_e2e.rs
+- [x] T-1910 (sprint 19, completed 2026-07-16): palette rewrite — pure parse_palette_command/palette_suggestions, preset merge via presets::find (no CWD), visible feedback + hint line — modified: src/app.rs

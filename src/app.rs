@@ -137,6 +137,71 @@ fn key_to_letter(key: Key) -> Option<char> {
 }
 
 // ---------------------------------------------------------------------------
+// Command palette (T-1910)
+// ---------------------------------------------------------------------------
+
+/// A parsed command-palette input. Pure data — the palette's Enter handler
+/// dispatches on it, and it is unit-tested headlessly.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PaletteCmd {
+    /// Blank input (close the palette, do nothing).
+    Empty,
+    /// `theme <name>` — switch theme: apply the preset when one exists,
+    /// otherwise set the raw theme name (custom themes are legal).
+    Theme(String),
+    /// `preset <name>` — strictly apply a preset bundle.
+    Preset(String),
+    /// `shell <name>` — open a tab on the named shell.
+    Shell(String),
+    /// Anything else — surfaced as visible feedback, never silently dropped.
+    Unknown(String),
+}
+
+/// Parse the palette input. Pure function.
+pub fn parse_palette_command(input: &str) -> PaletteCmd {
+    let mut parts = input.split_whitespace();
+    let Some(verb) = parts.next() else {
+        return PaletteCmd::Empty;
+    };
+    let arg = parts.next();
+    match (verb, arg) {
+        ("theme", Some(name)) => PaletteCmd::Theme(name.to_string()),
+        ("preset", Some(name)) => PaletteCmd::Preset(name.to_string()),
+        ("shell", Some(name)) => PaletteCmd::Shell(name.to_string()),
+        _ => PaletteCmd::Unknown(input.trim().to_string()),
+    }
+}
+
+/// The palette's known verbs.
+const PALETTE_VERBS: [&str; 3] = ["theme", "preset", "shell"];
+
+/// Completions for the palette hint line. Pure function: before a space is
+/// typed it completes verbs; after a verb it completes preset/shell names by
+/// prefix.
+pub fn palette_suggestions(input: &str, presets: &[String], shells: &[String]) -> Vec<String> {
+    let trimmed = input.trim_start();
+    match trimmed.split_once(char::is_whitespace) {
+        Some((verb, partial)) => {
+            let partial = partial.trim();
+            let pool: &[String] = match verb {
+                "theme" | "preset" => presets,
+                "shell" => shells,
+                _ => return Vec::new(),
+            };
+            pool.iter()
+                .filter(|n| n.starts_with(partial))
+                .map(|n| format!("{verb} {n}"))
+                .collect()
+        }
+        None => PALETTE_VERBS
+            .iter()
+            .filter(|v| v.starts_with(trimmed))
+            .map(|v| format!("{v} <name>"))
+            .collect(),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // BanquoApp (T-108, T-110)
 // ---------------------------------------------------------------------------
 
@@ -171,6 +236,12 @@ pub struct BanquoApp {
     // Command Palette state
     show_command_palette: bool,
     palette_input: String,
+    /// Feedback from the last palette command (errors, unknown input) —
+    /// rendered under the input instead of silently dropping the command.
+    palette_feedback: Option<String>,
+    /// Preset/shell names cached when the palette opens (for suggestions).
+    palette_preset_names: Vec<String>,
+    palette_shell_names: Vec<String>,
 
     // Motion easing state
     smoothed_cursor_pos: Option<egui::Pos2>,
@@ -218,6 +289,9 @@ impl BanquoApp {
             default_shell,
             show_command_palette: false,
             palette_input: String::new(),
+            palette_feedback: None,
+            palette_preset_names: Vec::new(),
+            palette_shell_names: Vec::new(),
             smoothed_cursor_pos: None,
             theme_spec,
             texture_kind: None,
@@ -301,6 +375,50 @@ impl BanquoApp {
             self.texture = crate::texture_gen::generate(kind, 4096, 4096)
                 .map(|img| ctx.load_texture("banquo_theme_bg", img, egui::TextureOptions::LINEAR));
             self.texture_kind = Some(kind);
+        }
+    }
+
+    /// Re-apply appearance after a config change (fonts, metrics, theme spec)
+    /// and persist it. Shared by the palette's theme/preset commands.
+    fn commit_config_change(&mut self, ctx: &egui::Context) {
+        let _ = self.config.save();
+        let (defs, font_source) = build_fonts(&self.config);
+        ctx.set_fonts(defs);
+        self.font_source = font_source;
+        self.cell_metrics = None;
+        self.theme_spec = crate::theme::resolve_spec(&self.config);
+    }
+
+    /// Palette `theme`/`preset` execution. Returns `true` on success (palette
+    /// closes); on failure sets [`Self::palette_feedback`] and returns `false`.
+    ///
+    /// `strict` is the `preset` verb: unknown names are errors. The `theme`
+    /// verb is lenient — a name with no preset is set as a raw (custom) theme,
+    /// styled via `[colors]` over the zircon base.
+    fn apply_preset_by_name(&mut self, name: &str, ctx: &egui::Context, strict: bool) -> bool {
+        match crate::presets::find(name) {
+            Some(preset) => match self.config.apply_preset(&preset.content) {
+                Ok(merged) => {
+                    self.config = merged;
+                    self.commit_config_change(ctx);
+                    true
+                }
+                Err(e) => {
+                    self.palette_feedback = Some(format!("preset \"{name}\" failed: {e:#}"));
+                    false
+                }
+            },
+            None if strict => {
+                self.palette_feedback =
+                    Some(format!("unknown preset \"{name}\" — see the hint below"));
+                false
+            }
+            None => {
+                // Custom theme: legal, styled by [colors] over the zircon base.
+                self.config.theme = Some(name.to_string());
+                self.commit_config_change(ctx);
+                true
+            }
         }
     }
 
@@ -410,6 +528,27 @@ impl App for BanquoApp {
             i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::P)
         }) {
             self.show_command_palette = !self.show_command_palette;
+            if self.show_command_palette {
+                // Cache suggestion pools once per open (not per frame).
+                self.palette_feedback = None;
+                self.palette_preset_names = crate::presets::list()
+                    .into_iter()
+                    .map(|(name, _)| name)
+                    .collect();
+                let mut shells: Vec<String> = self
+                    .config
+                    .shell
+                    .profiles
+                    .iter()
+                    .map(|p| p.name.clone())
+                    .collect();
+                for p in crate::os::detect_shells() {
+                    if !shells.contains(&p.name) {
+                        shells.push(p.name);
+                    }
+                }
+                self.palette_shell_names = shells;
+            }
         }
 
         // Inset the drawing rect
@@ -1080,12 +1219,16 @@ impl App for BanquoApp {
 
             let palette_w = 400.0;
             let palette_h = 40.0;
+            let hint_h = 22.0;
             let palette_rect =
                 Rect::from_center_size(overlay_rect.center(), Vec2::new(palette_w, palette_h));
+            // Background extends below the input to hold the hint/feedback line.
+            let bg_rect =
+                Rect::from_min_size(palette_rect.min, Vec2::new(palette_w, palette_h + hint_h));
 
             ui.scope_builder(egui::UiBuilder::new().max_rect(palette_rect), |ui| {
                 ui.painter()
-                    .rect_filled(palette_rect, 8.0, Color32::from_rgb(30, 30, 35));
+                    .rect_filled(bg_rect, 8.0, Color32::from_rgb(30, 30, 35));
                 let response = ui.add(
                     egui::TextEdit::singleline(&mut self.palette_input)
                         .font(egui::TextStyle::Monospace)
@@ -1093,74 +1236,107 @@ impl App for BanquoApp {
                         .margin(egui::vec2(10.0, 10.0)),
                 );
                 response.request_focus();
+                if response.changed() {
+                    // Typing invalidates stale feedback.
+                    self.palette_feedback = None;
+                }
 
-                if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    // execute command
-                    let cmd = self.palette_input.clone();
-                    let parts: Vec<&str> = cmd.split_whitespace().collect();
-                    if !parts.is_empty() {
-                        match parts[0] {
-                            "theme" if parts.len() > 1 => {
-                                let theme_name = parts[1];
-                                // Try to load the full theme config from configs/<name>.toml
-                                let theme_path = std::path::Path::new("configs")
-                                    .join(format!("{}.toml", theme_name));
-                                if let Ok(content) = std::fs::read_to_string(&theme_path) {
-                                    if let Ok(cfg) =
-                                        toml::from_str::<crate::config::BanquoConfig>(&content)
-                                    {
-                                        self.config = cfg;
-                                    } else {
-                                        // TOML parsed but failed — just set the name
-                                        self.config.theme = Some(theme_name.to_string());
-                                    }
-                                } else {
-                                    // No preset file found — just set the name
-                                    self.config.theme = Some(theme_name.to_string());
-                                }
-                                let _ = self.config.save();
-                                // Force font rebuild on next frame
-                                let (defs, font_source) = build_fonts(&self.config);
-                                ctx.set_fonts(defs);
-                                self.font_source = font_source;
-                                self.cell_metrics = None;
-                                self.theme_spec = crate::theme::resolve_spec(&self.config);
-                            }
-                            "shell" if parts.len() > 1 => {
-                                // Open a new tab running the named shell. Prefer a
-                                // configured profile; otherwise fall back to a
-                                // shell detected on PATH — so `shell pwsh` works
-                                // even with zero configuration. Unknown → no-op.
-                                let name = parts[1];
-                                let resolved =
-                                    crate::core::shell::resolve_shell(&self.config, Some(name))
-                                        .or_else(|| {
-                                            crate::os::detect_shells()
-                                                .into_iter()
-                                                .find(|p| p.name == name)
-                                                .map(|p| {
-                                                    crate::core::shell::profile_to_resolved(&p)
-                                                })
-                                        });
-                                if let (Some(shell), Some((cols, rows))) =
-                                    (resolved, self.last_grid_size)
-                                {
-                                    if let Ok(new_session) =
-                                        crate::core::session::spawn(cols, rows, Some(shell))
-                                    {
-                                        self.sessions.push(new_session);
-                                        self.active_tab = self.sessions.len() - 1;
-                                    }
-                                }
-                            }
-                            _ => {}
+                // Hint line: feedback from the last command, or completions.
+                let hint_text = match &self.palette_feedback {
+                    Some(feedback) => feedback.clone(),
+                    None => {
+                        let suggestions = palette_suggestions(
+                            &self.palette_input,
+                            &self.palette_preset_names,
+                            &self.palette_shell_names,
+                        );
+                        if suggestions.is_empty() {
+                            String::new()
+                        } else {
+                            suggestions
+                                .iter()
+                                .take(6)
+                                .cloned()
+                                .collect::<Vec<_>>()
+                                .join("  ·  ")
                         }
                     }
-                    self.palette_input.clear();
-                    self.show_command_palette = false;
+                };
+                if !hint_text.is_empty() {
+                    let hint_color = if self.palette_feedback.is_some() {
+                        Color32::from_rgb(230, 140, 120)
+                    } else {
+                        Color32::from_gray(140)
+                    };
+                    ui.painter().text(
+                        egui::pos2(bg_rect.min.x + 10.0, bg_rect.max.y - 6.0),
+                        egui::Align2::LEFT_BOTTOM,
+                        hint_text,
+                        FontId::new(12.0, FontFamily::Name(crate::fonts::BANQUO_MONO.into())),
+                        hint_color,
+                    );
+                }
+
+                if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    let done = match parse_palette_command(&self.palette_input.clone()) {
+                        PaletteCmd::Empty => true,
+                        PaletteCmd::Theme(name) => self.apply_preset_by_name(&name, &ctx, false),
+                        PaletteCmd::Preset(name) => self.apply_preset_by_name(&name, &ctx, true),
+                        PaletteCmd::Shell(name) => {
+                            // Prefer a configured profile; fall back to shells
+                            // detected on PATH — `shell pwsh` needs zero config.
+                            let resolved =
+                                crate::core::shell::resolve_shell(&self.config, Some(&name))
+                                    .or_else(|| {
+                                        crate::os::detect_shells()
+                                            .into_iter()
+                                            .find(|p| p.name == name)
+                                            .map(|p| crate::core::shell::profile_to_resolved(&p))
+                                    });
+                            match (resolved, self.last_grid_size) {
+                                (Some(shell), Some((cols, rows))) => {
+                                    match crate::core::session::spawn(cols, rows, Some(shell)) {
+                                        Ok(new_session) => {
+                                            self.sessions.push(new_session);
+                                            self.active_tab = self.sessions.len() - 1;
+                                            true
+                                        }
+                                        Err(e) => {
+                                            self.palette_feedback =
+                                                Some(format!("failed to spawn \"{name}\": {e}"));
+                                            false
+                                        }
+                                    }
+                                }
+                                (None, _) => {
+                                    self.palette_feedback = Some(format!(
+                                        "unknown shell \"{name}\" — see the hint below"
+                                    ));
+                                    false
+                                }
+                                (_, None) => false, // no grid yet; keep palette open
+                            }
+                        }
+                        PaletteCmd::Unknown(text) => {
+                            self.palette_feedback = Some(format!(
+                                "unknown command \"{text}\" — try: theme/preset/shell <name>"
+                            ));
+                            false
+                        }
+                    };
+                    if done {
+                        self.palette_input.clear();
+                        self.palette_feedback = None;
+                        self.show_command_palette = false;
+                    } else {
+                        // Keep the palette open so the feedback is readable.
+                        self.palette_input.clear();
+                    }
                 }
 
                 if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    self.palette_input.clear();
+                    self.palette_feedback = None;
                     self.show_command_palette = false;
                 }
             });
@@ -1278,6 +1454,97 @@ mod tests {
     fn test_encode_unhandled_none() {
         // F-keys with no text = unhandled
         assert_eq!(encode_key(Key::F1, Modifiers::NONE, ""), None);
+    }
+
+    // --- T-1910 unit tests: palette parsing + suggestions ---
+
+    #[test]
+    fn test_parse_palette_theme() {
+        assert_eq!(
+            parse_palette_command("theme zircon"),
+            PaletteCmd::Theme("zircon".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_palette_preset() {
+        assert_eq!(
+            parse_palette_command("preset blanco"),
+            PaletteCmd::Preset("blanco".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_palette_shell() {
+        assert_eq!(
+            parse_palette_command("shell pwsh"),
+            PaletteCmd::Shell("pwsh".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_palette_unknown() {
+        assert_eq!(
+            parse_palette_command("frobnicate"),
+            PaletteCmd::Unknown("frobnicate".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_palette_empty() {
+        assert_eq!(parse_palette_command(""), PaletteCmd::Empty);
+        assert_eq!(parse_palette_command("   "), PaletteCmd::Empty);
+    }
+
+    #[test]
+    fn test_parse_palette_missing_arg() {
+        // A verb without its argument is surfaced, not silently dropped.
+        assert_eq!(
+            parse_palette_command("theme"),
+            PaletteCmd::Unknown("theme".to_string())
+        );
+    }
+
+    fn preset_names() -> Vec<String> {
+        crate::theme::BUILTIN_NAMES
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn test_palette_suggestions_verbs() {
+        let sugg = palette_suggestions("", &preset_names(), &["pwsh".to_string()]);
+        assert!(sugg.iter().any(|s| s.starts_with("theme")));
+        assert!(sugg.iter().any(|s| s.starts_with("preset")));
+        assert!(sugg.iter().any(|s| s.starts_with("shell")));
+    }
+
+    #[test]
+    fn test_palette_suggestions_theme_names() {
+        let names = preset_names();
+        let all = palette_suggestions("theme ", &names, &[]);
+        for n in &names {
+            assert!(
+                all.contains(&format!("theme {n}")),
+                "missing suggestion for {n}"
+            );
+        }
+        let filtered = palette_suggestions("theme conc", &names, &[]);
+        assert_eq!(
+            filtered,
+            vec![
+                "theme concrete".to_string(),
+                "theme concrete-dark".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_palette_suggestions_shell_names() {
+        let shells = vec!["pwsh".to_string(), "cmd".to_string()];
+        let sugg = palette_suggestions("shell p", &[], &shells);
+        assert_eq!(sugg, vec!["shell pwsh".to_string()]);
     }
 
     // --- Transparency invariant (carry-forward from M1) ---

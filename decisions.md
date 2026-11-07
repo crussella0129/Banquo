@@ -5,6 +5,58 @@ future work; later sprints' "ignored-ADR" review screens against this log.
 
 ---
 
+## 2026-11-07 — ADR-014: An embeddable presenter crate (`banquo-presenter`) — host-owned loop, continuous redraw, selectable backend, pre-device hook — *Accepted (design; hardware verification pending)* (WordCrack Sprint 1, T-216) — *extends ADR-001 and ADR-003*
+
+**Context.** WordCrack's Rust port renders through Banquo crates and ships on Steam. Its acceptance gate needs the Steam overlay (Shift+Tab, notifications, FPS counter) to work over a Banquo-presented wgpu surface on Windows and Steam Deck. `docs/steam-overlay.md` holds the research. Its conclusions:
+- the overlay hooks device and swap-chain creation, so Steam must be initialised **before** the graphics objects exist. With wgpu that means before `wgpu::Instance::new`, because DX12 creates its DXGI factory, Vulkan resolves implicit layers, and WGL creates its context at instance creation;
+- the overlay draws into the game's own frames, so the game must **present continuously**;
+- a Vulkan layer that only hooks X11 surfaces makes the window backend matter on Linux.
+
+Banquo today cannot meet this as a library:
+- it is a single binary;
+- eframe owns the winit loop (ADR-001) and repaints on demand;
+- egui-wgpu initialises `PRIMARY | GL` (every backend at once);
+- the window is transparent, which on DX12 points toward the DirectComposition swap chain.
+
+**Decision.**
+1. **New workspace member `crates/banquo-presenter`**: a wgpu 29 presenter library, `#![forbid(unsafe_code)]` (ADR-002), with no eframe/egui dependency. wgpu is required at the version eframe resolves, so there is still one wgpu tree (ADR-001's warning). winit 0.30 sits behind a default `winit` feature. The terminal binary is unchanged.
+2. **The host owns the event loop.** The presenter never calls `run_app` / `run_native`. The host creates the window, drives `resumed` / `window_event` / `about_to_wait`, and calls the presenter's `resize`, `begin_frame`/`present` (or `render_frame`). Hosts with a non-winit window, such as SDL2, can hand over an already-created `wgpu::Surface<'static>` plus its instance (`from_parts`). Any `unsafe` surface creation then stays in the host, outside Banquo.
+3. **Pre-device hook.** The presenter builder takes `pre_device: FnOnce() -> R` and runs it **before** `wgpu::Instance::new`. The result is returned to the host, and the presenter records that the hook ran first. Steam (`SteamAPI_Init`, `steamworks::Client::init`) is called from the host's hook. **No Banquo library crate depends on Steamworks.** Steam code appears only in the spike example's own package.
+4. **Backend selection.** `Backend::{Dx12, Vulkan, Gl, Auto}`. The instance is created with **exactly one** `wgpu::Backends` flag. `Auto` resolves to DX12 on Windows and Vulkan on Linux. If the chosen backend yields no adapter, the presenter tries the platform fallback order and reports the backend it actually used:
+   - Windows: DX12 → Vulkan → GL;
+   - Linux: Vulkan → GL.
+
+   Hosts expose it as a launch option (`--renderer dx12|vulkan|gl`). On DX12 the presenter always uses `Dx12SwapchainKind::DxgiFromHwnd` and an opaque surface (alpha mode `Opaque`).
+5. **Redraw policy.** `RedrawPolicy::Continuous` is the default: the host requests a redraw after every presented frame, or runs `ControlFlow::Poll`, and presents every frame, including while the overlay is open or the game is paused. `RedrawPolicy::OnDemand` exists only for non-Steam tools and is documented as overlay-breaking. Present mode defaults to `Fifo`. `Mailbox` and `Immediate` are opt-in and fall back to `Fifo` when the surface lacks them. `Lost` and `Outdated` surfaces are reconfigured on the next frame, never left unpresented.
+6. **Platform rules for hosts**, documented in the crate:
+   - on Linux, force winit's X11 backend (`EventLoopBuilderExtX11::with_x11()`) when the host may run under Steam, because winit prefers Wayland and the overlay cannot hook Wayland surfaces;
+   - a Steam-launched host must never run `os::ensure_detached()` (ADR-012), because the relaunch makes Steam think the game exited.
+
+**Fallback.** If hardware checks (WordCrack T-218) show the overlay failing on a backend, the order of retreat is:
+1. Change that platform's default to a backend that works. Selection already exists, so this is a one-line default change.
+2. If no wgpu backend shows the overlay on a platform, the host presents its CPU canvas through a native path the overlay is known to hook. Candidates: an SDL2 `SDL_Renderer` window (what the pygame build uses today), or a minimal D3D11 swap chain on Windows. This lives in the host repo, behind the same frame-in / pixels-out contract, so Banquo stays unsafe-free.
+3. A failed or unavailable Steam Deck check keeps WordCrack's overlay criterion open and moves to its next sprint. Nothing in Banquo is reverted.
+
+GDI or `softbuffer` presentation is **not** a fallback: the overlay does not run on software-rasterised presents.
+
+**Licence.** `banquo-presenter`, and every other new crate added to this repository (including the spike example package), takes Banquo's **MIT OR Apache-2.0** licence. The `steamworks` crate the spike uses is MIT OR Apache-2.0 as well. The proprietary Steamworks redistributables (`steam_api64.dll`, `libsteam_api.so`) are never committed. The spike loads them from beside the binary at run time.
+
+**Relation to `banquo-face`.** ADR-003 reserves `banquo-face` for the terminal's appearance half at the Milestone-2 split: `view = render(snapshot, material)`, the Face. `banquo-presenter` does **not** take that name and is **not** that crate. It is the layer underneath any Face. It owns:
+- the wgpu instance, adapter, device and surface lifecycle;
+- backend and present-mode policy;
+- the pre-device hook;
+- frame acquisition, presentation and letterboxing of a host-provided texture or CPU canvas.
+
+When the split happens, `banquo-face` depends on `banquo-presenter` for presentation, and Banquo the terminal can move off eframe's loop without re-deciding anything here. The WordCrack research's "K5 `banquo-face`" presenter is this crate, renamed so the reserved name stays free. Materials (the WGSL chain) are added to `banquo-presenter` only as presentation passes. Whether a skin's material vocabulary later lives in `banquo-face` or a separate crate is decided at that split.
+
+**Consequences.**
+- Banquo gains its first library crate and its first non-eframe wgpu path. ADR-001 still governs the terminal binary; the presenter follows ADR-001's single-wgpu-version rule.
+- Any game host, WordCrack first, can satisfy the overlay's three requirements (init order, continuous presents, a hookable backend) by construction rather than by convention.
+- The spike (`examples/steam_overlay_spike`, App ID 480) runs each backend and logs `IsOverlayEnabled` and `GameOverlayActivated_t`. Its results, and the owner's Windows and Deck checks, may revise the per-platform defaults in item 4. Today: DX12 is expected to work; Windows Vulkan, Windows GL and Deck Vulkan are risks, per `docs/steam-overlay.md`.
+- Costs: a second consumer API to keep stable; per-backend manual testing that CI cannot do (no GPU, no Steam).
+
+---
+
 ## 2026-07-16 — ADR-013: Appearance as data — ThemeSpec engine, portable embedded presets, deep-merge application, addressable config — *Accepted* (sprint 19)
 
 **Context.** Themes were six string-matches scattered through the Face; presets were TOML files carrying the author's personal font paths, loaded relative to the process CWD (repo-checkout-only), and applying one *replaced* the user's entire config. `banquo compose --check` reported "valid" for unparseable files (lenient `load()` can't fail). ADR-006 already said machine-specific font data belongs in the user's config, not distributed artifacts — the shipped presets violated it.

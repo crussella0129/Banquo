@@ -13,7 +13,13 @@ publish = false
 # Milestone 2 when the truth/appearance seam becomes `banquo-core` + `banquo-face`.
 [workspace]
 members = [
-    "."
+    ".",
+    # ADR-014 (WordCrack T-217): the embeddable wgpu presenter library and its
+    # Steam overlay spike. The terminal binary above is unchanged and does not
+    # depend on either; `cargo build`/`cargo test` at the root still target only
+    # the `banquo` package, `--workspace` covers all three.
+    "crates/banquo-presenter",
+    "examples/steam_overlay_spike",
 ]
 
 # Milestone 1 is a single binary crate. The truth/appearance seam (design §I/§IV)

@@ -1,0 +1,33 @@
+[package]
+name = "banquo-presenter"
+version = "0.0.0"
+edition = "2021"
+description = "Banquo's embeddable wgpu presenter: host-owned event loop, pre-device hook, selectable backend, continuous redraw (ADR-014)."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/crussella0129/Banquo"
+publish = false
+
+[features]
+default = ["winit"]
+# Convenience glue for winit 0.30 hosts (window sizing, redraw policy -> ControlFlow).
+# The core API only needs raw-window-handle, so SDL2-style hosts can turn it off.
+winit = ["dep:winit"]
+
+[dependencies]
+# Caret version so cargo unifies on the single wgpu tree eframe resolves (ADR-001).
+wgpu = "29"
+raw-window-handle = "0.6"
+pollster = "0.4"
+# Same feature set eframe resolves for winit, so the workspace keeps one winit build.
+winit = { version = "0.30", default-features = false, features = [
+    "rwh_06",
+    "x11",
+    "wayland",
+], optional = true }
+
+# Opens real windows from a host-owned winit loop, so it needs the main thread:
+# a custom harness (`fn main`) instead of libtest's worker threads.
+[[test]]
+name = "host_owned_loop"
+harness = false
+required-features = ["winit"]

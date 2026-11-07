@@ -191,3 +191,91 @@ Accessed 2026-11-07.
 - [S28] Factorio forums, *Steam Overlay is not working with Wayland video driver*: https://forums.factorio.com/130412
 - [S29] rust-windowing/winit #843, *Steam overlay unresponsive on Linux* (XInput2 mask; open): https://github.com/rust-windowing/winit/issues/843
 - [S30] ValveSoftware/steam-for-linux #6691, overlay broken with `mesa_no_error`: https://github.com/ValveSoftware/steam-for-linux/issues/6691
+
+---
+
+## 5. The spike (WordCrack T-217): build, run, results, Steam Deck steps
+
+ADR-014 is implemented by `crates/banquo-presenter` (library, `#![forbid(unsafe_code)]`, no
+eframe/egui, no Steamworks) and exercised by `examples/steam_overlay_spike` (its own package;
+the only place Steam code lives, App ID 480, Spacewar).
+
+### 5.1 Build and run
+
+```text
+cargo build --release -p steam_overlay_spike
+target/release/steam_overlay_spike --renderer dx12|vulkan|gl|auto [--run-seconds N] [--no-steam]
+```
+
+- Steam is initialised in the presenter's pre-device hook, before `wgpu::Instance::new`; the log
+  line `init trace: [PreDeviceHook, InstanceCreated(..), ...]` shows the order.
+- The window shows colour bars, a bar that sweeps once a second (a frozen frame is obvious), the
+  backend in use, the measured FPS, `steam: on`/`steam: off`, and, with Steam, `overlay enabled`
+  and `overlay active`. The title bar repeats the backend and `steam: on|off`.
+- Once a second it logs `fps=`, `IsOverlayEnabled=` and `overlay_active=`; every
+  `GameOverlayActivated` callback is logged as `GameOverlayActivated active=true|false`.
+- Without Steam (client not running, or `--no-steam`) it runs and shows `steam: off`.
+- **Redistributables are never committed.** `examples/steam_overlay_spike/build.rs` copies
+  `steam_api64.dll` (Windows) or `libsteam_api.so` (Linux) from the `steamworks-sys` build output
+  (its build script copies them out of the Steamworks SDK bundled in the crate,
+  `lib/steam/redistributable_bin/<platform>`) into `target/<profile>/` beside the binary, and
+  writes `steam_appid.txt` (`480`) there. `STEAM_SDK_LOCATION` overrides the SDK. On Linux the
+  binary is linked with an `$ORIGIN` rpath so the `.so` beside it is found.
+
+### 5.2 Local Windows results (2026-11-07, RTX 2080 Ti, driver 596.49, 165 Hz display, Steam running, launched from a terminal, not through Steam)
+
+| Backend | Init order | FPS (1 s windows) | `IsOverlayEnabled` | Notes |
+|---|---|---|---|---|
+| dx12 | hook → `InstanceCreated(Dx12)` | 154.7 (first second), then 165.0-165.2; avg 163.0 | `false` right after init, `true` from t=1 s | `Fifo`, `Bgra8UnormSrgb`, DxgiFromHwnd |
+| vulkan | hook → `InstanceCreated(Vulkan)` | 165.0-165.2; avg 165.1 | `true` from t=1 s | Steam's Fossilize layer attached (`steamapprun_pipeline_cache` for 480) |
+| gl | hook → `InstanceCreated(Gl)` | 930-1172; avg 1122.9 | `true` from t=1 s | WGL ignored the `Fifo` swap interval on this driver (uncapped) |
+| dx12, `--no-steam` | hook → `InstanceCreated(Dx12)` | 165.1-165.9 | n/a, shows `steam: off` | clean exit (code 0) |
+
+`IsOverlayEnabled` only says the overlay DLL is loaded into the process. Whether it **draws**
+(Shift+Tab, notifications, the FPS counter) needs a person looking at the window, which is
+WordCrack T-218. Shift+Tab was not exercised in these unattended runs.
+
+### 5.3 Linux x86_64 build
+
+Intended environment: the Steam Runtime 3 "sniper" SDK image. Command, from the repository root:
+
+```text
+docker run --rm -v "$PWD:/src" -w /src registry.gitlab.steamos.cloud/steamrt/sniper/sdk bash -lc '
+  (command -v cargo >/dev/null || curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal) &&
+  . "$HOME/.cargo/env" 2>/dev/null; cargo build --release -p steam_overlay_spike --target-dir target/linux-build &&
+  mkdir -p target/linux-spike &&
+  cp target/linux-build/release/steam_overlay_spike target/linux-build/release/libsteam_api.so \
+     target/linux-build/release/steam_appid.txt target/linux-spike/'
+```
+
+**Status on 2026-11-07: not built.** Docker Desktop is installed on the build machine, but its
+Linux engine was not running (`docker info`: cannot connect to
+`npipe:////./pipe/dockerDesktopLinuxEngine`). Starting Docker Desktop did not bring the engine up
+within about five minutes (the `docker-desktop` WSL distribution stayed stopped). There is no
+Linux CI job for this package yet. Per WordCrack T-217, T218.3's deferral applies to the Deck row
+until the build above is run.
+
+### 5.4 Steam Deck launch steps
+
+1. Copy the `target/linux-spike/` folder (binary, `libsteam_api.so`, `steam_appid.txt`) to the
+   Deck, for example to `~/Games/steam_overlay_spike/` (USB stick, `scp`, or a network share), and
+   make the binary executable (`chmod +x steam_overlay_spike`).
+2. **Desktop Mode:** hold the power button → *Switch to Desktop*.
+3. Open Steam → *Games* → **Add a Non-Steam Game to My Library…** → *Browse…*, set the file
+   filter to *All Files*, pick `steam_overlay_spike`, then *Add Selected Programs*.
+4. In the new library entry → *Properties…*: *Start in* = the folder from step 1; *Launch
+   options* = `--renderer vulkan` (the Deck's only expected backend; `--renderer gl` is the
+   untested escape hatch). Leave *Compatibility* off (it is a native Linux binary). The spike
+   forces winit's X11 backend itself.
+5. Return to **Game Mode** (desktop shortcut *Return to Gaming Mode*).
+6. *Library* → *Non-Steam* → launch the spike. The window should show `backend: vulkan`, the FPS
+   and `steam: on`. The spike calls `init_app(480)`, so Steam treats it as Spacewar.
+7. Check: the Steam button / Quick Access (…) menus, and Shift+Tab with a keyboard, open the
+   overlay over the spike; a notification and the Steam FPS counter (Performance overlay) are
+   visible; the overlay closes; the sweeping bar keeps moving and the FPS holds. Record the result
+   in WordCrack's `steam-overlay-spike.md` (T-218).
+
+On Windows, T-218 follows the same pattern: *Add a Non-Steam Game* pointing at
+`target/release/steam_overlay_spike.exe` (with `steam_api64.dll` and `steam_appid.txt` beside
+it), with launch options `--renderer dx12`, then `vulkan`, then `gl`, launched from Steam so the
+overlay is injected at start-up.

@@ -1,0 +1,20 @@
+[package]
+name = "steam_overlay_spike"
+version = "0.0.0"
+edition = "2021"
+description = "ADR-014 spike: Steam overlay over a banquo-presenter wgpu surface (App ID 480, Spacewar)."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/crussella0129/Banquo"
+publish = false
+build = "build.rs"
+
+[dependencies]
+banquo-presenter = { path = "../../crates/banquo-presenter" }
+# MIT OR Apache-2.0. Steam lives only in this package; no Banquo library links it.
+steamworks = "0.13"
+
+# Built only so its build script has copied the Steamworks redistributable into
+# the shared build directory before ours runs; build.rs then places that file
+# beside the spike binary. The redistributables are never committed.
+[build-dependencies]
+steamworks-sys = "0.13"

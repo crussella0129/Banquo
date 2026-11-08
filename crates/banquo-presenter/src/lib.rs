@@ -475,7 +475,20 @@ where
     }
 }
 
+/// Process-wide count of `wgpu::Instance`s this crate has created.
+static INSTANCES_CREATED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Test seam: how many `wgpu::Instance`s this crate has created in this
+/// process. A pre-device hook that reads it can prove that no instance (and so
+/// no adapter, device or surface) existed when it ran, independently of
+/// [`Presenter::init_trace`]. Not part of the supported API.
+#[doc(hidden)]
+pub fn wgpu_instances_created() -> usize {
+    INSTANCES_CREATED.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 fn create_instance<T: PresentTarget>(backend: Backend, target: &T) -> wgpu::Instance {
+    INSTANCES_CREATED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let mut backend_options = wgpu::BackendOptions::default();
     // ADR-014 item 4: never the DirectComposition swap chain.
     backend_options.dx12.presentation_system = wgpu::Dx12SwapchainKind::DxgiFromHwnd;

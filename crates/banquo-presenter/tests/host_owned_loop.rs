@@ -10,25 +10,25 @@
 //! `NoUsableBackend` for that backend alone. A separate default-config case
 //! (fallback on) checks that any fallback is logged in the trace.
 //!
+//! Hook order is checked independently of `init_trace()`: the hook reads
+//! `wgpu_instances_created()` (a test seam the presenter bumps on every
+//! `wgpu::Instance` it creates) and must see no instance from this build.
+//!
 //! A missing event loop, a window that cannot be created, or a backend with no
 //! adapter is a FAILURE. Set `BANQUO_ALLOW_HEADLESS=1` (headless CI, GPU-less
 //! runners) to report those as skipped instead; the summary line then says
 //! `skipped` rather than `ok`, so a gate log can tell the two apart.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use banquo_presenter::{
-    wgpu, winit, Backend, FrameOutcome, InitStep, Presenter, PresenterBuilder, PresenterError,
-    RedrawPolicy,
+    wgpu, wgpu_instances_created, winit, Backend, FrameOutcome, InitStep, Presenter,
+    PresenterBuilder, PresenterError, RedrawPolicy,
 };
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowId};
-
-/// Order counter shared by the hook and the trace check: the hook takes ticket 0.
-static TICKETS: AtomicUsize = AtomicUsize::new(0);
 
 /// The variable that turns "no display / no adapter" from a failure into a skip.
 const ALLOW_HEADLESS: &str = "BANQUO_ALLOW_HEADLESS";
@@ -114,18 +114,42 @@ impl Host {
             }
         };
 
-        TICKETS.store(0, Ordering::SeqCst);
         let builder = match case {
             Case::Strict(b) => PresenterBuilder::new().backend(b).allow_fallback(false),
             Case::DefaultConfig => PresenterBuilder::new(),
         };
-        let (built, hook_ticket) = builder
-            .pre_device(|| TICKETS.fetch_add(1, Ordering::SeqCst))
+        // Hook order, checked outside the presenter's own trace: the presenter
+        // counts every `wgpu::Instance` it creates, and the hook reads that
+        // count. If any instance (hence any adapter, device or surface) for
+        // this build existed before the hook ran, the hook sees more than
+        // `before`.
+        let before = wgpu_instances_created();
+        let (built, seen_by_hook) = builder
+            .pre_device(wgpu_instances_created)
             .build_for_window(&window);
+        let after = wgpu_instances_created();
 
-        if hook_ticket != 0 {
-            self.failures
-                .push(format!("{label}: pre-device hook did not run first"));
+        if seen_by_hook != before {
+            self.failures.push(format!(
+                "{label}: pre-device hook ran after {} wgpu instance(s) were created",
+                seen_by_hook - before
+            ));
+        }
+        let traced = match &built {
+            Ok(p) => p.init_trace(),
+            Err(e) => e.trace(),
+        }
+        .iter()
+        .filter(|s| matches!(s, InitStep::InstanceCreated(_)))
+        .count();
+        // The counter must agree with the trace, so it really tracks instance
+        // creation (a counter that never moved would make the check above
+        // vacuous again).
+        if after - before != traced || traced == 0 {
+            self.failures.push(format!(
+                "{label}: {} instance(s) counted, {traced} traced",
+                after - before
+            ));
         }
 
         match built {

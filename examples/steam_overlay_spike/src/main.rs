@@ -492,3 +492,15 @@ fn main() {
     drop(spike);
     std::process::exit(code);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// T217.3: with no Steam client (init skipped or `init_app` failed) the HUD,
+    /// the window title and the log lines all say `steam: off`.
+    #[test]
+    fn steam_label_off_without_steam() {
+        assert_eq!(steam_label(&None), "steam: off");
+    }
+}

@@ -6,6 +6,14 @@ Nothing here has been run on hardware yet: the verdicts below are expectations, 
 spike (`examples/steam_overlay_spike`, WordCrack T-217) and the owner's check (T-218)
 confirm or overturn them.
 
+**Update 2026-11-08 (WordCrack Sprint 1 Test phase):** the expectations were checked
+on Windows. T-218 ran the spike through Steam on DX12, Vulkan and OpenGL: the overlay
+opened and closed, the notifications and the performance monitor showed, and the frame
+rate held on all three. T-245 made the §5.3 Linux build in the sniper SDK. The Steam Deck
+row (§2.4) is still unverified (WordCrack backlog T-226). With no Vulkan driver,
+`--renderer vulkan` falls back to GL, so a Deck run must confirm `backend=vulkan` on screen.
+The results are recorded in WordCrack `docs/sprints/s1/sprint-tests/steam-overlay-spike.md`.
+
 **Legend.** Anything not read directly in a cited source or in pinned crate source is
 marked **(inferred)**.
 

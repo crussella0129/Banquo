@@ -5,7 +5,7 @@ future work; later sprints' "ignored-ADR" review screens against this log.
 
 ---
 
-## 2026-11-07 — ADR-014: An embeddable presenter crate (`banquo-presenter`) — host-owned loop, continuous redraw, selectable backend, pre-device hook — *Accepted (design; hardware verification pending)* (WordCrack Sprint 1, T-216) — *extends ADR-001 and ADR-003*
+## 2026-11-07 — ADR-014: An embeddable presenter crate (`banquo-presenter`) — host-owned loop, continuous redraw, selectable backend, pre-device hook — *Accepted (design; verified on Windows DX12/Vulkan/GL 2026-11-08 by WordCrack T-218; Steam Deck pending, WordCrack T-226)* (WordCrack Sprint 1, T-216) — *extends ADR-001 and ADR-003*
 
 **Context.** WordCrack's Rust port renders through Banquo crates and ships on Steam. Its acceptance gate needs the Steam overlay (Shift+Tab, notifications, FPS counter) to work over a Banquo-presented wgpu surface on Windows and Steam Deck. `docs/steam-overlay.md` holds the research. Its conclusions:
 - the overlay hooks device and swap-chain creation, so Steam must be initialised **before** the graphics objects exist. With wgpu that means before `wgpu::Instance::new`, because DX12 creates its DXGI factory, Vulkan resolves implicit layers, and WGL creates its context at instance creation;
@@ -56,6 +56,8 @@ When the split happens, `banquo-face` depends on `banquo-presenter` for presenta
 - Costs: a second consumer API to keep stable; per-backend manual testing that CI cannot do (no GPU, no Steam).
 
 ---
+
+**Update 2026-11-08.** The builder also takes `allow_fallback(false)`. With it, a requested backend that has no adapter is an error (`NoUsableBackend`), not a silent fallback; the WordCrack T-235 test uses this so that each backend is really exercised. The default stays fallback-on, as decided above, and every fallback is logged as `BackendUnavailable`. A hidden test seam, `wgpu_instances_created()`, counts instance creation so that the pre-device hook order can be tested (T-244); it is not part of the supported API.
 
 ## 2026-07-16 — ADR-013: Appearance as data — ThemeSpec engine, portable embedded presets, deep-merge application, addressable config — *Accepted* (sprint 19)
 

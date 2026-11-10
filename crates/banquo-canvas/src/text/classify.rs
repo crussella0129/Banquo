@@ -43,6 +43,12 @@ pub fn classify(face: &FontFace, text: &str, pygame_width: i32, rust_width: i32)
     let ids = |run: Vec<shape::ShapedGlyph>| run.into_iter().map(|g| g.gid).collect::<Vec<_>>();
     let default = ids(shape::run(face, text));
     let off = ids(shape::run_features_off(face, text));
+    classify_runs(&default, &off, pygame_width, rust_width)
+}
+
+/// The class of a difference given the default-feature and features-off
+/// glyph-ID sequences, pygame's `Font.size` width and the Rust width.
+fn classify_runs(default: &[u32], off: &[u32], pygame_width: i32, rust_width: i32) -> DiffClass {
     if pygame_width != rust_width || default != off {
         DiffClass::Shaping
     } else {
@@ -141,5 +147,86 @@ pub fn verdict(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Rgba8;
+
+    /// A `width` x 4 surface with one opaque pixel at (1, 1).
+    fn surface(width: u32) -> Surface {
+        let mut s = Surface::new(width, 4, true);
+        s.set(1, 1, Rgba8::new(255, 255, 255, 255));
+        s
+    }
+
+    /// The verdict the corpus comparison reaches for an entry with no known
+    /// difference: `got` is the Rust render, `want` pygame's.
+    fn outcome(
+        default: &[u32],
+        off: &[u32],
+        pygame_width: i32,
+        got: &Surface,
+        want: &Surface,
+    ) -> Verdict {
+        verdict(
+            got == want,
+            || classify_runs(default, off, pygame_width, got.width() as i32),
+            None,
+            &"00".repeat(32),
+        )
+    }
+
+    #[test]
+    fn mismatch_classifier_shaping_vs_raster() {
+        let ids = [36u32, 37, 38];
+        let want = surface(20);
+
+        // Different glyph-ID sequences: shaping.
+        let mut got = surface(20);
+        got.set(2, 2, Rgba8::new(255, 255, 255, 255));
+        let substituted = [36u32, 99, 38];
+        assert_eq!(
+            classify_runs(&ids, &substituted, 20, 20),
+            DiffClass::Shaping
+        );
+        assert_eq!(classify_runs(&ids, &ids[..2], 20, 20), DiffClass::Shaping);
+        assert_eq!(
+            outcome(&ids, &substituted, 20, &got, &want),
+            Verdict::Unpinned(DiffClass::Shaping)
+        );
+
+        // Same sequence, different advances (pygame's width is not the Rust
+        // width): shaping.
+        let wider = surface(21);
+        assert_eq!(classify_runs(&ids, &ids, 20, 21), DiffClass::Shaping);
+        assert_eq!(
+            outcome(&ids, &ids, 20, &wider, &want),
+            Verdict::Unpinned(DiffClass::Shaping)
+        );
+
+        // Identical sequence and width, different pixels: raster.
+        assert_eq!(differing_pixels(&got, &want), 1);
+        assert_eq!(classify_runs(&ids, &ids, 20, 20), DiffClass::Raster);
+        assert_eq!(
+            outcome(&ids, &ids, 20, &got, &want),
+            Verdict::Unpinned(DiffClass::Raster)
+        );
+
+        // Identical output: exact, and the class of a difference is never
+        // asked for.
+        let same = surface(20);
+        assert_eq!(differing_pixels(&same, &want), 0);
+        assert_eq!(
+            outcome(&ids, &substituted, 20, &same, &want),
+            Verdict::Exact
+        );
+        assert_eq!(
+            verdict(same == want, || unreachable!(), None, &"00".repeat(32)),
+            Verdict::Exact
+        );
+        assert!(Verdict::Exact.passes());
     }
 }

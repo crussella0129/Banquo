@@ -1,0 +1,4 @@
+# Golden and fixture files are byte-exact and covered by SHA-256 manifests.
+# Never let a checkout (core.autocrlf) rewrite their line endings.
+crates/banquo-canvas/tests/golden/** -text
+crates/banquo-canvas/tests/fixtures/** -text

@@ -9,9 +9,9 @@ publish = false
 
 # Banquo is its own workspace root. The table also stops cargo from climbing into
 # any unrelated ancestor Cargo.toml on the dev's machine (the home directory may
-# contain stray manifests). It has three members: the `banquo` terminal binary
-# (this package), the `banquo-presenter` library and the `steam_overlay_spike`
-# example package.
+# contain stray manifests). It has four members: the `banquo` terminal binary
+# (this package), the `banquo-presenter` library, the `steam_overlay_spike`
+# example package and the `banquo-canvas` library.
 [workspace]
 members = [
     ".",
@@ -21,6 +21,9 @@ members = [
     # the `banquo` package, `--workspace` covers all three.
     "crates/banquo-presenter",
     "examples/steam_overlay_spike",
+    # The CPU canvas (RGBA8 surfaces, pygame-compatible rects, text, headless
+    # rendering). No GPU dependency; the terminal binary does not link it.
+    "crates/banquo-canvas",
 ]
 
 # The terminal's truth/appearance seam (design §I/§IV) is still expressed as

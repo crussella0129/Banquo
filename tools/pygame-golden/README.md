@@ -55,3 +55,40 @@ clips; pygame's `Surface.fill(color, rect)` instead moves a rect with a
 negative x or y to 0.
 
 ## text
+
+`text/gen_text.py` writes the text goldens and the baked glyph atlas for the
+bundled font fixture, JetBrains Mono Regular (SIL OFL 1.1; `OFL.txt` travels
+with it in `crates/banquo-canvas/tests/fixtures/fonts/`). Its inputs are the
+font and `text/sizes.json` (full sizes 14, 18, 26, 34; subset sizes 10-39; the
+subset characters). It needs, besides the pins above, SDL_ttf 2.20.1,
+fontTools 4.62.1 and uharfbuzz 0.53.3.
+
+```
+python -I tools/pygame-golden/text/gen_text.py --out crates/banquo-canvas/tests
+```
+
+| Output | What it holds |
+|--------|---------------|
+| `fixtures/atlas/jetbrains-mono-regular/atlas.json` | atlas format 2: per size the hinted advance, ascent, descent, height, line height, page and glyphs (`[px, py, w, h, ox, oy]`); `overlap_rule` |
+| `fixtures/atlas/jetbrains-mono-regular/atlas-<size>.png` | 30 pages, coverage in the red channel; every glyph ID at the full sizes, `.notdef` and the subset characters at the others |
+| `golden/text/corpus.json` | 2,426 entries: size, index, category, text, and `render` (`png`, or `zero_width_error` where pygame raises "Text has zero width") |
+| `golden/text/<size>/<index>.png` | `Font.render(text, True, colour)` as 8-bit RGBA |
+| `golden/text/sizes.json` | `Font.size(text)` per entry |
+| `golden/text/MANIFEST.json` | SHA-256 of all of the above, the versions, the colour and the measured overlap rule |
+
+The atlas bake copies the font with fontTools so that glyph ID g sits at
+U+E000 + g (GSUB, GPOS and GDEF dropped), renders each code point with pygame
+and cuts the bitmap out at the box `Font.metrics` reports. The overlap rule
+(`max`, `over` or `or`, or `no-overlap-observed`) is the one whose atlas
+assembly matches the most pygame renders; SDL_ttf 2.20.1 ORs coverage, and the
+measured rule is `or`.
+
+The corpus, at 14, 18, 26 and 34: `__`, `->`, `&&`, a tab, `a\nb`, U+4E2D
+(`.notdef`), U+00A0-U+00FF, U+0410-U+044F and U+0391-U+03C9 singly, code
+ligature (calt) triggers and 64 seeded random printable-ASCII strings; at all
+30 sizes: each subset character and the subset string.
+
+`golden/text/approved_differences.json` is not generated and not in the
+manifest: it lists the known differences (`size`, `index`, `class`,
+`sha256` of the exact Rust output), maintained by review, never by the
+generator.

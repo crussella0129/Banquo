@@ -27,7 +27,8 @@
 //!    paused. [`RedrawPolicy::OnDemand`] exists for non-Steam tools and breaks
 //!    the Steam overlay.
 //! 5. **`Fifo` by default.** `Mailbox` / `Immediate` are opt-in and fall back to
-//!    `Fifo` when the surface lacks them. `Lost` / `Outdated` surfaces are
+//!    `Fifo` when the surface lacks them; [`PresentMode::Uncapped`] tries
+//!    `Mailbox`, then `Immediate`, then `Fifo`. `Lost` / `Outdated` surfaces are
 //!    reconfigured on the next frame.
 //! 6. **DX12** always uses `Dx12SwapchainKind::DxgiFromHwnd` with an opaque
 //!    surface.
@@ -215,29 +216,40 @@ pub enum PresentMode {
     Mailbox,
     /// Un-synced (opt-in; may tear).
     Immediate,
+    /// Not tied to the display refresh, like pygame's default (no vsync):
+    /// `Mailbox`, else `Immediate`, else `Fifo` (opt-in). The host paces
+    /// frames itself (for example with a 60 Hz tick).
+    Uncapped,
 }
 
 impl PresentMode {
-    fn to_wgpu(self) -> wgpu::PresentMode {
+    /// The wgpu modes this request tries, in order; `Fifo` is always last.
+    fn chain(self) -> &'static [wgpu::PresentMode] {
         match self {
-            PresentMode::Fifo => wgpu::PresentMode::Fifo,
-            PresentMode::Mailbox => wgpu::PresentMode::Mailbox,
-            PresentMode::Immediate => wgpu::PresentMode::Immediate,
+            PresentMode::Fifo => &[wgpu::PresentMode::Fifo],
+            PresentMode::Mailbox => &[wgpu::PresentMode::Mailbox, wgpu::PresentMode::Fifo],
+            PresentMode::Immediate => &[wgpu::PresentMode::Immediate, wgpu::PresentMode::Fifo],
+            PresentMode::Uncapped => &[
+                wgpu::PresentMode::Mailbox,
+                wgpu::PresentMode::Immediate,
+                wgpu::PresentMode::Fifo,
+            ],
         }
     }
 }
 
-/// Picks the requested present mode if the surface supports it, else `Fifo`.
+/// Picks the first mode of the request's chain that the surface supports, else
+/// `Fifo` (see [`PresentMode`]).
 pub fn choose_present_mode(
     requested: PresentMode,
     supported: &[wgpu::PresentMode],
 ) -> wgpu::PresentMode {
-    let wanted = requested.to_wgpu();
-    if supported.contains(&wanted) {
-        wanted
-    } else {
-        wgpu::PresentMode::Fifo
-    }
+    requested
+        .chain()
+        .iter()
+        .copied()
+        .find(|m| supported.contains(m))
+        .unwrap_or(wgpu::PresentMode::Fifo)
 }
 
 /// Picks `Opaque` when supported (DX12 flip-model swap chains and the overlay
@@ -1342,6 +1354,16 @@ mod tests {
             choose_present_mode(PresentMode::Fifo, &all),
             wgpu::PresentMode::Fifo
         );
+    }
+
+    #[test]
+    fn uncapped_walks_mailbox_immediate_fifo() {
+        use wgpu::PresentMode as M;
+        let pick = |s: &[M]| choose_present_mode(PresentMode::Uncapped, s);
+        assert_eq!(pick(&[M::Fifo, M::Immediate, M::Mailbox]), M::Mailbox);
+        assert_eq!(pick(&[M::Fifo, M::Immediate]), M::Immediate);
+        assert_eq!(pick(&[M::Fifo]), M::Fifo);
+        assert_eq!(pick(&[]), M::Fifo);
     }
 
     #[test]

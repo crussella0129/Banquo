@@ -5,7 +5,7 @@ future work; later sprints' "ignored-ADR" review screens against this log.
 
 ---
 
-## 2026-11-07 — ADR-014: An embeddable presenter crate (`banquo-presenter`) — host-owned loop, continuous redraw, selectable backend, pre-device hook — *Accepted (design; verified on Windows DX12/Vulkan/GL 2026-11-08 by downstream task T-218; Steam Deck pending, downstream task T-226)* (downstream task T-216) — *extends ADR-001 and ADR-003*
+## 2026-11-07 — ADR-014: An embeddable presenter crate (`banquo-presenter`) — host-owned loop, continuous redraw, selectable backend, pre-device hook — *Accepted (design; verified on Windows DX12/Vulkan/GL 2026-11-08 by downstream task T-218 and on an SDL2 host 2026-11-10 by downstream task T-317; Steam Deck pending (downstream tasks T-318, T-226))* (downstream task T-216) — *extends ADR-001 and ADR-003*
 
 **Context.** A downstream game host renders through Banquo crates and ships on Steam. Its acceptance gate needs the Steam overlay (Shift+Tab, notifications, FPS counter) to work over a Banquo-presented wgpu surface on Windows and Steam Deck. `docs/steam-overlay.md` holds the research. Its conclusions:
 - the overlay hooks device and swap-chain creation, so Steam must be initialised **before** the graphics objects exist. With wgpu that means before `wgpu::Instance::new`, because DX12 creates its DXGI factory, Vulkan resolves implicit layers, and WGL creates its context at instance creation;
@@ -58,6 +58,34 @@ When the split happens, `banquo-face` depends on `banquo-presenter` for presenta
 ---
 
 **Update 2026-11-08.** The builder also takes `allow_fallback(false)`. With it, a requested backend that has no adapter is an error (`NoUsableBackend`), not a silent fallback; the downstream task T-235 test uses this so that each backend is really exercised. The default stays fallback-on, as decided above, and every fallback is logged as `BackendUnavailable`. A hidden test seam, `wgpu_instances_created()`, counts instance creation so that the pre-device hook order can be tested (T-244); it is not part of the supported API.
+
+**Update 2026-11-10 (downstream game port, Sprint 2): verdict on the shipped host.** The downstream game ships an SDL2 window, not winit, and loads `steam_api` at run time. Its spike (downstream task T-316, kept in the downstream repository) checks this presenter on that host. The spike:
+- creates the window with SDL 2.28.4, linked statically;
+- hands it to `PresenterBuilder::build()` through a host raw-handle newtype (`HasWindowHandle` + `HasDisplayHandle` over SDL's handles). `build_with_surface` was not needed;
+- calls `SteamAPI_InitFlat` from the pre-device hook, before `wgpu::Instance::new`. The init trace on every backend reads `[PreDeviceHook, InstanceCreated(..), AdapterSelected(..), DeviceCreated, SurfaceConfigured(Fifo)]`.
+
+The rows below ran at presenter revision **`d6438f64d1acc3d72c249c530908acddc0fa93ec`** (`feat/game-canvas`), with **wgpu 29.0.3** as the spike's `Cargo.lock` resolves it at that revision. A wgpu bump re-runs this check.
+
+| Platform / backend | Verdict | Evidence |
+|---|---|---|
+| Windows DX12 | works | launched by Steam (non-Steam shortcut, App 480); Shift+Tab opens and closes the overlay (`GameOverlayActivated` true then false); launch and "Screenshot Taken" notifications; FPS counter; frames with the overlay open 99.0% of closed; clean exit |
+| Windows Vulkan | works | as above, with Steam's Vulkan overlay layer loaded; 99.7% |
+| Windows GL | works | as above; 99.7% |
+| Steam Deck Vulkan | pending (T-318) | the Linux build at the same revision is prepared; the session is the owner's |
+
+The evidence is the downstream game port's SDL2-host overlay record (downstream task T-317).
+
+- **Present mode.** The default stays `Fifo`.
+  - The measured reference, pygame 2.6.1 `SCALED` on SDL 2.28.4, runs with `vsync: off`. It flips at 1,095 fps uncapped and at 60.9 fps under `Clock.tick(60)`.
+  - With the host's own 60 fps tick, `Fifo` gives the same cadence: 59.4-60.5 fps on average in the downstream Steam-launched runs. `PresentMode::Uncapped` (Mailbox, then Immediate, then Fifo) exists for a host that wants the reference's tear-allowed presents. It is opt-in.
+- **Scaling.** `PresentParams` reproduces the reference's presentation:
+  - **In a window:** whole-number scaling with `Nearest` filtering, centred, black bars. The measured `SCALED` windowed content rects for a 900x700 canvas are 1280x800 → `[190, 50, 900, 700]`, 1366x768 → `[233, 34, 900, 700]` and 1600x900 → `[350, 100, 900, 700]`; the presenter's Integer viewports equal all three.
+  - **In fullscreen:** aspect-preserving fractional scaling (`Fit`). The reference measured `[354, 0, 1851, 1440]` at 2560x1440, a scale of 2.057.
+  - **The reference itself has no fullscreen mode** (it opens `SCALED | RESIZABLE` only). The fullscreen row is the host's choice, not a parity rule.
+- **`--renderer` policy.**
+  - **No flag:** `Auto` with fallback on (DX12 → Vulkan → GL on Windows; Vulkan → GL on Linux).
+  - **An explicit `--renderer dx12|vulkan|gl`:** builds with `allow_fallback(false)`. On `NoUsableBackend` the host logs a warning and retries `Auto`, so a bad launch option never stops the game from starting.
+- **A failed row.** No row failed. If one had, the row would read `fails <column>` with "Gate A not met for this row", and a named backlog task would carry the working path in this repository: a backend change, or the SDL_Renderer fallback presenter in the Fallback list above.
 
 ## 2026-07-16 — ADR-013: Appearance as data — ThemeSpec engine, portable embedded presets, deep-merge application, addressable config — *Accepted* (sprint 19)
 

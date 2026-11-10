@@ -287,3 +287,19 @@ On Windows, T-218 follows the same pattern: *Add a Non-Steam Game* pointing at
 `target/release/steam_overlay_spike.exe` (with `steam_api64.dll` and `steam_appid.txt` beside
 it), with launch options `--renderer dx12`, then `vulkan`, then `gl`, launched from Steam so the
 overlay is injected at start-up.
+
+### 5.5 An SDL2 host (downstream tasks T-316, T-317)
+
+The downstream game's shipped host is an SDL2 window that loads `steam_api` at run time. Its verdict table is in ADR-014 ("Update 2026-11-10"): Windows DX12, Vulkan and GL work, and the Steam Deck row is pending. That host's spike lives in the downstream repository. A host built the same way needs:
+
+1. **SDL 2.28.4, linked statically.** Use the `sdl2` crate (0.38) with `raw-window-handle` and `static-link`, built against the release source rather than the `bundled` feature. On Linux, set SDL's video driver to X11 before `SDL_Init`, because the overlay cannot hook Wayland surfaces.
+2. **A raw-handle newtype** over the SDL window that implements `HasWindowHandle` and `HasDisplayHandle`. Pass it to `PresenterBuilder::build()`, with `Backend` from the host's `--renderer` option. An explicit choice uses `allow_fallback(false)`; on `NoUsableBackend`, log a warning and retry `Auto`.
+3. **Steam in the pre-device hook.** Load `steam_api64.dll` / `libsteam_api.so` with `libloading` from beside the executable, and call `SteamAPI_InitFlat` inside the hook, before `wgpu::Instance::new`. A missing library or a failed init leaves the game running with Steam off.
+4. **Continuous presents** (`RedrawPolicy::Continuous`), with `PresentParams` Integer + Nearest in a window. Pump Steam's callbacks every frame, so `GameOverlayActivated` arrives.
+5. **Launching through Steam.** On Windows:
+   - add the executable with *Add a Non-Steam Game*, with `steam_api64.dll` and `steam_appid.txt` (`480` for a test host) beside it;
+   - keep the per-game overlay switch on;
+   - set the launch options to `--renderer dx12|vulkan|gl`;
+   - start it from the library or with `steam://rungameid/<game ID>`.
+
+   On the Deck, follow 5.4 with `--renderer vulkan`.

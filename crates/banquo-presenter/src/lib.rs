@@ -41,6 +41,32 @@
 //!   (Banquo's `os::ensure_detached()`, ADR-012): Steam would think the game
 //!   exited.
 //!
+//! ## Presentation parameters
+//!
+//! [`PresentParams`] picks the scaling rule ([`ScaleMode::Integer`], the
+//! default, is pygame `SCALED` in a window: whole-number scale, centred;
+//! [`ScaleMode::Fit`] is SDL 2's `RenderSetLogicalSize` letterbox), the texture
+//! filter ([`Filter::Nearest`] by default) and the bar colour.
+//! [`viewport_for`] and [`window_to_logical`] are the pure arithmetic behind
+//! [`Presenter::viewport`] and [`Presenter::window_to_logical`]. The surface is
+//! always written through an sRGB view ([`choose_surface_format`]); a backend
+//! that offers no sRGB-capable format is reported unavailable.
+//!
+//! ## Hosts without winit
+//!
+//! The core API needs only `raw-window-handle` 0.6. A host with its own
+//! windowing library (SDL2, for example) depends on this crate with
+//! `default-features = false` (no winit in the tree) and wraps its window's raw
+//! handles in a small newtype that implements `HasWindowHandle`,
+//! `HasDisplayHandle`, `Debug`, `Send`, `Sync` and `Clone` (the
+//! [`PresentTarget`] bounds). That newtype goes straight into
+//! [`PresenterBuilder::build`], so the pre-device hook, the backend walk and
+//! DX12's `DxgiFromHwnd` all apply unchanged; this has been verified with an
+//! SDL 2.28.4 window on DX12, Vulkan and GL. The host must keep the window
+//! alive for as long as the presenter exists, forward size changes to
+//! [`Presenter::resize`], and present every frame. [`Presenter::from_parts`]
+//! remains for hosts that must create the surface themselves.
+//!
 //! ## Safety
 //!
 //! `#![forbid(unsafe_code)]`. Surfaces are created through wgpu's safe
@@ -51,6 +77,13 @@
 use std::fmt;
 
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+
+mod params;
+
+pub use params::{
+    choose_surface_format, sampler_for, viewport_for, viewport_for_mode, window_to_logical, Filter,
+    PresentParams, ScaleMode, Viewport,
+};
 
 pub use wgpu;
 #[cfg(feature = "winit")]
@@ -532,116 +565,18 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 }
 "#;
 
-struct Canvas {
-    texture: wgpu::Texture,
-    bind_group: wgpu::BindGroup,
-    size: (u32, u32),
-}
-
-/// A configured surface plus device, driven by the host's event loop.
-pub struct Presenter {
-    instance: wgpu::Instance,
-    surface: wgpu::Surface<'static>,
-    adapter: wgpu::Adapter,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    surface_config: wgpu::SurfaceConfiguration,
-    config: PresenterConfig,
-    requested: Backend,
-    backend: Backend,
-    needs_reconfigure: bool,
+/// The blit: one pipeline (for one target format), its bind-group layout and
+/// the sampler chosen by [`sampler_for`]. Shared by the on-screen presenter
+/// and [`render_offscreen`], so both draw identically.
+struct Blit {
     pipeline: wgpu::RenderPipeline,
     bind_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
-    canvas: Option<Canvas>,
-    trace: Vec<InitStep>,
+    filter: Filter,
 }
 
-impl fmt::Debug for Presenter {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Presenter")
-            .field("requested", &self.requested)
-            .field("backend", &self.backend)
-            .field("size", &self.size())
-            .field("present_mode", &self.surface_config.present_mode)
-            .field("redraw_policy", &self.config.redraw_policy)
-            .finish_non_exhaustive()
-    }
-}
-
-impl Presenter {
-    /// Builds on an instance and surface the host created itself (non-winit
-    /// hosts, or hosts that need `create_surface_unsafe`). The host is then
-    /// responsible for having run its pre-device work before creating
-    /// `instance`.
-    pub fn from_parts(
-        instance: wgpu::Instance,
-        surface: wgpu::Surface<'static>,
-        size: (u32, u32),
-        config: PresenterConfig,
-    ) -> Result<Presenter, PresenterError> {
-        let mut trace = vec![InitStep::ExternalInstance];
-        let mut presenter = Presenter::finish(instance, surface, size, config, &mut trace)
-            .map_err(PresenterError::Device)?;
-        presenter.requested = config.backend;
-        presenter.trace = trace;
-        Ok(presenter)
-    }
-
-    fn finish(
-        instance: wgpu::Instance,
-        surface: wgpu::Surface<'static>,
-        size: (u32, u32),
-        config: PresenterConfig,
-        trace: &mut Vec<InitStep>,
-    ) -> Result<Presenter, String> {
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: config.power_preference,
-            force_fallback_adapter: false,
-            compatible_surface: Some(&surface),
-        }))
-        .map_err(|e| format!("adapter: {e}"))?;
-        let info = adapter.get_info();
-        let backend = Backend::from_wgpu(info.backend)
-            .ok_or_else(|| format!("unsupported adapter backend {:?}", info.backend))?;
-        trace.push(InitStep::AdapterSelected(backend, info.name.clone()));
-
-        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            label: Some("banquo-presenter"),
-            required_limits:
-                wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits()),
-            ..Default::default()
-        }))
-        .map_err(|e| format!("device: {e}"))?;
-        trace.push(InitStep::DeviceCreated);
-
-        let caps = surface.get_capabilities(&adapter);
-        if caps.formats.is_empty() {
-            return Err("surface is not supported by this adapter".into());
-        }
-        let format = caps
-            .formats
-            .iter()
-            .copied()
-            .find(|f| f.is_srgb())
-            .unwrap_or(caps.formats[0]);
-        let present_mode = choose_present_mode(config.present_mode, &caps.present_modes);
-        let surface_config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format,
-            width: size.0.max(1),
-            height: size.1.max(1),
-            present_mode,
-            desired_maximum_frame_latency: 2,
-            alpha_mode: choose_alpha_mode(&caps.alpha_modes),
-            view_formats: vec![],
-        };
-        let configured = size.0 > 0 && size.1 > 0;
-        if configured {
-            surface.configure(&device, &surface_config);
-        }
-        trace.push(InitStep::SurfaceConfigured(present_mode));
-
+impl Blit {
+    fn new(device: &wgpu::Device, format: wgpu::TextureFormat, filter: Filter) -> Blit {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("banquo-presenter blit"),
             source: wgpu::ShaderSource::Wgsl(BLIT_WGSL.into()),
@@ -697,11 +632,358 @@ impl Presenter {
             multiview_mask: None,
             cache: None,
         });
-        // Nearest: pixel-art canvases stay crisp when letterboxed up.
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        let sampler = device.create_sampler(&sampler_for(filter));
+        Blit {
+            pipeline,
+            bind_layout,
+            sampler,
+            filter,
+        }
+    }
+
+    /// Replaces the sampler when the filter changes; returns whether it did.
+    fn set_filter(&mut self, device: &wgpu::Device, filter: Filter) -> bool {
+        if filter == self.filter {
+            return false;
+        }
+        self.sampler = device.create_sampler(&sampler_for(filter));
+        self.filter = filter;
+        true
+    }
+
+    fn bind_group(&self, device: &wgpu::Device, view: &wgpu::TextureView) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("banquo-presenter canvas"),
-            ..Default::default()
+            layout: &self.bind_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        })
+    }
+
+    /// Clears `target` to `background` and, when given, draws the canvas into
+    /// `viewport`.
+    fn encode(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        canvas: Option<(&wgpu::BindGroup, Viewport)>,
+        background: wgpu::Color,
+    ) {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("banquo-presenter frame"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(background),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
         });
+        if let Some((bind_group, vp)) = canvas {
+            if !vp.is_empty() {
+                pass.set_viewport(vp.x as f32, vp.y as f32, vp.w as f32, vp.h as f32, 0.0, 1.0);
+                pass.set_pipeline(&self.pipeline);
+                pass.set_bind_group(0, bind_group, &[]);
+                pass.draw(0..3, 0..1);
+            }
+        }
+    }
+}
+
+/// Creates an sRGB RGBA8 canvas texture and uploads `rgba` into it.
+fn create_canvas_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    rgba: &[u8],
+    width: u32,
+    height: u32,
+) -> wgpu::Texture {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("banquo-presenter canvas"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    write_canvas(queue, &texture, rgba, width, height);
+    texture
+}
+
+fn write_canvas(
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+    rgba: &[u8],
+    width: u32,
+    height: u32,
+) {
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        rgba,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(width * 4),
+            rows_per_image: Some(height),
+        },
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+    );
+}
+
+/// Draws an sRGB RGBA8 canvas (`canvas.0 * canvas.1 * 4` bytes) through the
+/// presenter's blit (same WGSL, same sampler rule, same [`viewport_for`]) into
+/// an offscreen `Rgba8UnormSrgb` target of `target` size, and reads it back as
+/// row-major RGBA8 bytes. Needs no window or surface; used for readback tests
+/// and screenshots.
+///
+/// # Panics
+///
+/// If the buffer size does not match `canvas`, a dimension is zero, or the
+/// device fails to map the readback buffer.
+pub fn render_offscreen(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    rgba: &[u8],
+    canvas: (u32, u32),
+    target: (u32, u32),
+    params: &PresentParams,
+) -> Vec<u8> {
+    let (cw, ch) = canvas;
+    let (tw, th) = target;
+    assert!(
+        cw > 0 && ch > 0 && tw > 0 && th > 0,
+        "sizes must be non-empty"
+    );
+    assert_eq!(
+        rgba.len(),
+        cw as usize * ch as usize * 4,
+        "canvas buffer must be width * height * 4 bytes"
+    );
+    let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+    let blit = Blit::new(device, format, params.filter);
+    let texture = create_canvas_texture(device, queue, rgba, cw, ch);
+    let canvas_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let bind_group = blit.bind_group(device, &canvas_view);
+
+    let out = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("banquo-presenter offscreen"),
+        size: wgpu::Extent3d {
+            width: tw,
+            height: th,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let out_view = out.create_view(&wgpu::TextureViewDescriptor::default());
+    let row = tw * 4;
+    let padded_row =
+        row.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("banquo-presenter readback"),
+        size: u64::from(padded_row) * u64::from(th),
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("banquo-presenter offscreen"),
+    });
+    let vp = viewport_for(canvas, target, params);
+    blit.encode(
+        &mut encoder,
+        &out_view,
+        Some((&bind_group, vp)),
+        params.background,
+    );
+    encoder.copy_texture_to_buffer(
+        wgpu::TexelCopyTextureInfo {
+            texture: &out,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyBufferInfo {
+            buffer: &buffer,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(padded_row),
+                rows_per_image: Some(th),
+            },
+        },
+        wgpu::Extent3d {
+            width: tw,
+            height: th,
+            depth_or_array_layers: 1,
+        },
+    );
+    queue.submit(Some(encoder.finish()));
+
+    let slice = buffer.slice(..);
+    let (tx, rx) = std::sync::mpsc::channel();
+    slice.map_async(wgpu::MapMode::Read, move |r| {
+        let _ = tx.send(r);
+    });
+    device
+        .poll(wgpu::PollType::wait_indefinitely())
+        .expect("device poll failed");
+    rx.recv()
+        .expect("map callback dropped")
+        .expect("readback buffer map failed");
+    let mapped = slice.get_mapped_range();
+    let mut pixels = Vec::with_capacity(row as usize * th as usize);
+    for y in 0..th as usize {
+        let start = y * padded_row as usize;
+        pixels.extend_from_slice(&mapped[start..start + row as usize]);
+    }
+    drop(mapped);
+    buffer.unmap();
+    pixels
+}
+
+struct Canvas {
+    texture: wgpu::Texture,
+    bind_group: wgpu::BindGroup,
+    size: (u32, u32),
+}
+
+/// A configured surface plus device, driven by the host's event loop.
+pub struct Presenter {
+    instance: wgpu::Instance,
+    surface: wgpu::Surface<'static>,
+    adapter: wgpu::Adapter,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    surface_config: wgpu::SurfaceConfiguration,
+    /// The format the blit renders in: the surface format, or its sRGB view.
+    render_format: wgpu::TextureFormat,
+    config: PresenterConfig,
+    params: PresentParams,
+    requested: Backend,
+    backend: Backend,
+    needs_reconfigure: bool,
+    blit: Blit,
+    canvas: Option<Canvas>,
+    trace: Vec<InitStep>,
+}
+
+impl fmt::Debug for Presenter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Presenter")
+            .field("requested", &self.requested)
+            .field("backend", &self.backend)
+            .field("size", &self.size())
+            .field("present_mode", &self.surface_config.present_mode)
+            .field("redraw_policy", &self.config.redraw_policy)
+            .field("params", &self.params)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Presenter {
+    /// Builds on an instance and surface the host created itself (non-winit
+    /// hosts, or hosts that need `create_surface_unsafe`). The host is then
+    /// responsible for having run its pre-device work before creating
+    /// `instance`.
+    pub fn from_parts(
+        instance: wgpu::Instance,
+        surface: wgpu::Surface<'static>,
+        size: (u32, u32),
+        config: PresenterConfig,
+    ) -> Result<Presenter, PresenterError> {
+        let mut trace = vec![InitStep::ExternalInstance];
+        let mut presenter = Presenter::finish(instance, surface, size, config, &mut trace)
+            .map_err(PresenterError::Device)?;
+        presenter.requested = config.backend;
+        presenter.trace = trace;
+        Ok(presenter)
+    }
+
+    fn finish(
+        instance: wgpu::Instance,
+        surface: wgpu::Surface<'static>,
+        size: (u32, u32),
+        config: PresenterConfig,
+        trace: &mut Vec<InitStep>,
+    ) -> Result<Presenter, String> {
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: config.power_preference,
+            force_fallback_adapter: false,
+            compatible_surface: Some(&surface),
+        }))
+        .map_err(|e| format!("adapter: {e}"))?;
+        let info = adapter.get_info();
+        let backend = Backend::from_wgpu(info.backend)
+            .ok_or_else(|| format!("unsupported adapter backend {:?}", info.backend))?;
+        trace.push(InitStep::AdapterSelected(backend, info.name.clone()));
+
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("banquo-presenter"),
+            required_limits:
+                wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits()),
+            ..Default::default()
+        }))
+        .map_err(|e| format!("device: {e}"))?;
+        trace.push(InitStep::DeviceCreated);
+
+        let caps = surface.get_capabilities(&adapter);
+        if caps.formats.is_empty() {
+            return Err("surface is not supported by this adapter".into());
+        }
+        // Never a linear target: the canvas is sRGB and would come out darker.
+        let (format, view_format) = choose_surface_format(&caps.formats)?;
+        let render_format = view_format.unwrap_or(format);
+        let present_mode = choose_present_mode(config.present_mode, &caps.present_modes);
+        let surface_config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format,
+            width: size.0.max(1),
+            height: size.1.max(1),
+            present_mode,
+            desired_maximum_frame_latency: 2,
+            alpha_mode: choose_alpha_mode(&caps.alpha_modes),
+            view_formats: view_format.into_iter().collect(),
+        };
+        let configured = size.0 > 0 && size.1 > 0;
+        if configured {
+            surface.configure(&device, &surface_config);
+        }
+        trace.push(InitStep::SurfaceConfigured(present_mode));
+
+        let params = PresentParams::default();
+        let blit = Blit::new(&device, render_format, params.filter);
 
         Ok(Presenter {
             instance,
@@ -710,13 +992,13 @@ impl Presenter {
             device,
             queue,
             surface_config,
+            render_format,
             config,
+            params,
             requested: config.backend,
             backend,
             needs_reconfigure: !configured,
-            pipeline,
-            bind_layout,
-            sampler,
+            blit,
             canvas: None,
             trace: Vec::new(),
         })
@@ -752,9 +1034,51 @@ impl Presenter {
         self.surface_config.format
     }
 
+    /// The format the canvas is rendered in: the surface format when it is
+    /// sRGB, else its sRGB view format. Always sRGB.
+    pub fn render_format(&self) -> wgpu::TextureFormat {
+        self.render_format
+    }
+
     /// Current surface size in physical pixels.
     pub fn size(&self) -> (u32, u32) {
         (self.surface_config.width, self.surface_config.height)
+    }
+
+    /// The presentation parameters in use.
+    pub fn present_params(&self) -> PresentParams {
+        self.params
+    }
+
+    /// Sets the presentation parameters (scale mode, filter, background) used
+    /// from the next frame on.
+    pub fn set_present_params(&mut self, params: PresentParams) {
+        if self.blit.set_filter(&self.device, params.filter) {
+            // The sampler is part of the canvas bind group.
+            if let Some(c) = self.canvas.as_mut() {
+                let view = c
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
+                c.bind_group = self.blit.bind_group(&self.device, &view);
+            }
+        }
+        self.params = params;
+    }
+
+    /// Where the last presented canvas lands on the current surface:
+    /// [`viewport_for`] of the last canvas size and [`Presenter::size`]. `None`
+    /// before any canvas was presented.
+    pub fn viewport(&self) -> Option<Viewport> {
+        let canvas = self.canvas.as_ref()?.size;
+        Some(viewport_for(canvas, self.size(), &self.params))
+    }
+
+    /// Maps a window position (physical pixels) to the canvas pixel under it,
+    /// for the last presented canvas; `None` outside the viewport or before
+    /// any canvas was presented. See [`window_to_logical`].
+    pub fn window_to_logical(&self, x: f64, y: f64) -> Option<(i32, i32)> {
+        let canvas = self.canvas.as_ref()?.size;
+        window_to_logical(self.viewport()?, canvas, x, y)
     }
 
     /// What happened during construction, in order. With the builder the
@@ -794,7 +1118,8 @@ impl Presenter {
     }
 
     /// Uploads an sRGB RGBA8 canvas (`width * height * 4` bytes, row-major),
-    /// draws it letterboxed (aspect preserved) over `background`, and presents.
+    /// draws it into [`Presenter::viewport`] (scale mode and filter from
+    /// [`Presenter::present_params`]) over `background`, and presents.
     ///
     /// # Panics
     ///
@@ -814,6 +1139,13 @@ impl Presenter {
         );
         self.upload_canvas(rgba, width, height);
         self.present_inner(Some((width, height)), background)
+    }
+
+    /// [`Presenter::present_rgba`] with the background from
+    /// [`Presenter::present_params`].
+    pub fn present_frame(&mut self, rgba: &[u8], width: u32, height: u32) -> FrameOutcome {
+        let background = self.params.background;
+        self.present_rgba(rgba, width, height, background)
     }
 
     /// winit convenience: what the host's `ControlFlow` should be for this
@@ -836,62 +1168,20 @@ impl Presenter {
     }
 
     fn upload_canvas(&mut self, rgba: &[u8], width: u32, height: u32) {
-        if self.canvas.as_ref().map(|c| c.size) != Some((width, height)) {
-            let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("banquo-presenter canvas"),
-                size: wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
-            });
-            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-            let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("banquo-presenter canvas"),
-                layout: &self.bind_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&self.sampler),
-                    },
-                ],
-            });
-            self.canvas = Some(Canvas {
-                texture,
-                bind_group,
-                size: (width, height),
-            });
-        }
-        if let Some(canvas) = &self.canvas {
-            self.queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &canvas.texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                rgba,
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(width * 4),
-                    rows_per_image: Some(height),
-                },
-                wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-            );
+        match &self.canvas {
+            Some(c) if c.size == (width, height) => {
+                write_canvas(&self.queue, &c.texture, rgba, width, height);
+            }
+            _ => {
+                let texture = create_canvas_texture(&self.device, &self.queue, rgba, width, height);
+                let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let bind_group = self.blit.bind_group(&self.device, &view);
+                self.canvas = Some(Canvas {
+                    texture,
+                    bind_group,
+                    size: (width, height),
+                });
+            }
         }
     }
 
@@ -927,41 +1217,23 @@ impl Presenter {
             }
             _ => return FrameOutcome::Skipped,
         };
-        let view = frame
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        // Render through the sRGB view (the surface format itself when it is sRGB).
+        let view = frame.texture.create_view(&wgpu::TextureViewDescriptor {
+            format: Some(self.render_format),
+            ..Default::default()
+        });
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("banquo-presenter frame"),
             });
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("banquo-presenter frame"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(background),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            if let (Some(size), Some(c)) = (canvas, self.canvas.as_ref()) {
-                let (x, y, w, h) = letterbox(size, self.size());
-                if w > 0.0 && h > 0.0 {
-                    pass.set_viewport(x, y, w, h, 0.0, 1.0);
-                    pass.set_pipeline(&self.pipeline);
-                    pass.set_bind_group(0, &c.bind_group, &[]);
-                    pass.draw(0..3, 0..1);
-                }
+        let drawn = match (canvas, self.canvas.as_ref()) {
+            (Some(size), Some(c)) => {
+                Some((&c.bind_group, viewport_for(size, self.size(), &self.params)))
             }
-        }
+            _ => None,
+        };
+        self.blit.encode(&mut encoder, &view, drawn, background);
         self.queue.submit(Some(encoder.finish()));
         frame.present();
         FrameOutcome::Presented
@@ -969,16 +1241,11 @@ impl Presenter {
 }
 
 /// The viewport `(x, y, w, h)` that fits a `canvas`-sized image inside a
-/// `surface`-sized target with its aspect ratio preserved and centred.
+/// `surface`-sized target with its aspect ratio preserved and centred: the
+/// [`ScaleMode::Fit`] case of [`viewport_for`], as floats.
 pub fn letterbox(canvas: (u32, u32), surface: (u32, u32)) -> (f32, f32, f32, f32) {
-    let (cw, ch) = (canvas.0 as f32, canvas.1 as f32);
-    let (sw, sh) = (surface.0 as f32, surface.1 as f32);
-    if cw <= 0.0 || ch <= 0.0 || sw <= 0.0 || sh <= 0.0 {
-        return (0.0, 0.0, 0.0, 0.0);
-    }
-    let scale = (sw / cw).min(sh / ch);
-    let (w, h) = ((cw * scale).floor(), (ch * scale).floor());
-    (((sw - w) / 2.0).floor(), ((sh - h) / 2.0).floor(), w, h)
+    let v = viewport_for_mode(canvas, surface, ScaleMode::Fit);
+    (v.x as f32, v.y as f32, v.w as f32, v.h as f32)
 }
 
 #[cfg(test)]

@@ -290,7 +290,7 @@ overlay is injected at start-up.
 
 ### 5.5 An SDL2 host (downstream tasks T-316, T-317)
 
-The downstream game's shipped host is an SDL2 window that loads `steam_api` at run time. Its verdict table is in ADR-014 ("Update 2026-11-10"): Windows DX12, Vulkan and GL work, and the Steam Deck row is pending. That host's spike lives in the downstream repository. A host built the same way needs:
+The downstream game's shipped host is an SDL2 window that loads `steam_api` at run time. Its verdict table is in ADR-014 ("Update 2026-11-10"): Windows DX12, Vulkan and GL work; the Steam Deck row is carried to downstream task T-226. That host's spike lives in the downstream repository. A host built the same way needs:
 
 1. **SDL 2.28.4, linked statically.** Use the `sdl2` crate (0.38) with `raw-window-handle` and `static-link`, built against the release source rather than the `bundled` feature. On Linux, set SDL's video driver to X11 before `SDL_Init`, because the overlay cannot hook Wayland surfaces.
 2. **A raw-handle newtype** over the SDL window that implements `HasWindowHandle` and `HasDisplayHandle`. Pass it to `PresenterBuilder::build()`, with `Backend` from the host's `--renderer` option. An explicit choice uses `allow_fallback(false)`; on `NoUsableBackend`, log a warning and retry `Auto`.

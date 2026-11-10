@@ -5,7 +5,7 @@ future work; later sprints' "ignored-ADR" review screens against this log.
 
 ---
 
-## 2026-11-07 — ADR-014: An embeddable presenter crate (`banquo-presenter`) — host-owned loop, continuous redraw, selectable backend, pre-device hook — *Accepted (design; verified on Windows DX12/Vulkan/GL 2026-11-08 by downstream task T-218 and on an SDL2 host 2026-11-10 by downstream task T-317; Steam Deck pending (downstream tasks T-318, T-226))* (downstream task T-216) — *extends ADR-001 and ADR-003*
+## 2026-11-07 — ADR-014: An embeddable presenter crate (`banquo-presenter`) — host-owned loop, continuous redraw, selectable backend, pre-device hook — *Accepted (design; verified on Windows DX12/Vulkan/GL 2026-11-08 by downstream task T-218 and on an SDL2 host 2026-11-10 by downstream task T-317; Steam Deck carried to downstream task T-226 (Gate A partly met))* (downstream task T-216) — *extends ADR-001 and ADR-003*
 
 **Context.** A downstream game host renders through Banquo crates and ships on Steam. Its acceptance gate needs the Steam overlay (Shift+Tab, notifications, FPS counter) to work over a Banquo-presented wgpu surface on Windows and Steam Deck. `docs/steam-overlay.md` holds the research. Its conclusions:
 - the overlay hooks device and swap-chain creation, so Steam must be initialised **before** the graphics objects exist. With wgpu that means before `wgpu::Instance::new`, because DX12 creates its DXGI factory, Vulkan resolves implicit layers, and WGL creates its context at instance creation;
@@ -71,7 +71,7 @@ The rows below ran at presenter revision **`d6438f64d1acc3d72c249c530908acddc0fa
 | Windows DX12 | works | launched by Steam (non-Steam shortcut, App 480); Shift+Tab opens and closes the overlay (`GameOverlayActivated` true then false); launch and "Screenshot Taken" notifications; FPS counter; frames with the overlay open 99.0% of closed; clean exit |
 | Windows Vulkan | works | as above, with Steam's Vulkan overlay layer loaded; 99.7% |
 | Windows GL | works | as above; 99.7% |
-| Steam Deck Vulkan | pending (T-318) | the Linux build at the same revision is prepared; the session is the owner's |
+| Steam Deck Vulkan | carried to T-226 (Gate A partly met) | no Deck session in that sprint (owner decision, 2026-11-10); the Linux build at the same revision and its hashes are prepared for downstream task T-226 |
 
 The evidence is the downstream game port's SDL2-host overlay record (downstream task T-317).
 

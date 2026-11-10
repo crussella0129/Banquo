@@ -1,1 +1,26 @@
-[]
+[
+  {
+    "size": 14,
+    "index": 19,
+    "class": "raster",
+    "sha256": "1b8d0103e3a8d9ce8bda3bff71225be4b5bb18830466ae94f517321b7ecc6f94"
+  },
+  {
+    "size": 18,
+    "index": 19,
+    "class": "raster",
+    "sha256": "b16efe34e810d8f791443efa2519fea699857cb8bcbf93f69f6eea4163753333"
+  },
+  {
+    "size": 26,
+    "index": 19,
+    "class": "raster",
+    "sha256": "0764c726a72f8e1d245f332a1d022fffdada0c4cb2a016886e4b33b66cb9a53f"
+  },
+  {
+    "size": 34,
+    "index": 19,
+    "class": "raster",
+    "sha256": "220b2f8d3e09ffab8feb349a5a0876dcf3325fa0a91514839622d2aca8159041"
+  }
+]

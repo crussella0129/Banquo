@@ -7,26 +7,26 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/crussella0129/Banquo"
 publish = false
 
-# Declare Banquo its own workspace root. Beyond the Milestone-2 split this also
-# stops cargo from climbing into any unrelated ancestor Cargo.toml on the dev's
-# machine (the home directory may contain stray manifests). Members are added at
-# Milestone 2 when the truth/appearance seam becomes `banquo-core` + `banquo-face`.
+# Banquo is its own workspace root. The table also stops cargo from climbing into
+# any unrelated ancestor Cargo.toml on the dev's machine (the home directory may
+# contain stray manifests). It has three members: the `banquo` terminal binary
+# (this package), the `banquo-presenter` library and the `steam_overlay_spike`
+# example package.
 [workspace]
 members = [
     ".",
-    # ADR-014 (WordCrack T-217): the embeddable wgpu presenter library and its
-    # Steam overlay spike. The terminal binary above is unchanged and does not
+    # ADR-014: the embeddable wgpu presenter library and its Steam overlay
+    # spike. The terminal binary above is unchanged and does not
     # depend on either; `cargo build`/`cargo test` at the root still target only
     # the `banquo` package, `--workspace` covers all three.
     "crates/banquo-presenter",
     "examples/steam_overlay_spike",
 ]
 
-# Milestone 1 is a single binary crate. The truth/appearance seam (design §I/§IV)
-# is expressed as module boundaries (`app` = the Face, `fonts` = appearance) so it
-# cleaves cleanly into a Cargo workspace (`banquo-core` + `banquo-face`) at
-# Milestone 2 when the truth-half (PTY + grid + Snapshot) gains real content.
-# [workspace] table reserved for that split.
+# The terminal's truth/appearance seam (design §I/§IV) is still expressed as
+# module boundaries inside the `banquo` package (`app` = the Face, `fonts` =
+# appearance). When it is split into `banquo-core` + `banquo-face` (ADR-003),
+# those crates join the members list above.
 
 [dependencies]
 # eframe transitively owns the pinned `wgpu` and `winit`; depending on it alone

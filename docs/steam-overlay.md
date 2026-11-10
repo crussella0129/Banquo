@@ -1,18 +1,18 @@
 # The Steam overlay on a wgpu surface
 
-**Status:** research note, 2026-11-07. Written for WordCrack Sprint 1 task T-216 on the
+**Status:** research note, 2026-11-07. Written for downstream task T-216 on the
 `feat/embeddable-presenter` branch. It is the evidence behind ADR-014 in `decisions.md`.
 Nothing here has been run on hardware yet: the verdicts below are expectations, and the
-spike (`examples/steam_overlay_spike`, WordCrack T-217) and the owner's check (T-218)
+spike (`examples/steam_overlay_spike`, downstream task T-217) and the owner's check (T-218)
 confirm or overturn them.
 
-**Update 2026-11-08 (WordCrack Sprint 1 Test phase):** the expectations were checked
+**Update 2026-11-08 (downstream test phase):** the expectations were checked
 on Windows. T-218 ran the spike through Steam on DX12, Vulkan and OpenGL: the overlay
 opened and closed, the notifications and the performance monitor showed, and the frame
 rate held on all three. T-245 made the §5.3 Linux build in the sniper SDK. The Steam Deck
-row (§2.4) is still unverified (WordCrack backlog T-226). With no Vulkan driver,
+row (§2.4) is still unverified (downstream task T-226). With no Vulkan driver,
 `--renderer vulkan` falls back to GL, so a Deck run must confirm `backend=vulkan` on screen.
-The results are recorded in WordCrack `docs/sprints/s1/sprint-tests/steam-overlay-spike.md`.
+The results are recorded in the downstream game port's `steam-overlay-spike.md` test record.
 
 **Legend.** Anything not read directly in a cited source or in pinned crate source is
 marked **(inferred)**.
@@ -202,7 +202,7 @@ Accessed 2026-11-07.
 
 ---
 
-## 5. The spike (WordCrack T-217): build, run, results, Steam Deck steps
+## 5. The spike (downstream task T-217): build, run, results, Steam Deck steps
 
 ADR-014 is implemented by `crates/banquo-presenter` (library, `#![forbid(unsafe_code)]`, no
 eframe/egui, no Steamworks) and exercised by `examples/steam_overlay_spike` (its own package;
@@ -241,7 +241,7 @@ target/release/steam_overlay_spike --renderer dx12|vulkan|gl|auto [--run-seconds
 
 `IsOverlayEnabled` only says the overlay DLL is loaded into the process. Whether it **draws**
 (Shift+Tab, notifications, the FPS counter) needs a person looking at the window, which is
-WordCrack T-218. Shift+Tab was not exercised in these unattended runs.
+downstream task T-218. Shift+Tab was not exercised in these unattended runs.
 
 ### 5.3 Linux x86_64 build
 
@@ -260,7 +260,7 @@ docker run --rm -v "$PWD:/src" -w /src registry.gitlab.steamos.cloud/steamrt/sni
 Linux engine was not running (`docker info`: cannot connect to
 `npipe:////./pipe/dockerDesktopLinuxEngine`). Starting Docker Desktop did not bring the engine up
 within about five minutes (the `docker-desktop` WSL distribution stayed stopped). There is no
-Linux CI job for this package yet. Per WordCrack T-217, T218.3's deferral applies to the Deck row
+Linux CI job for this package yet. Per downstream task T-217, T218.3's deferral applies to the Deck row
 until the build above is run.
 
 ### 5.4 Steam Deck launch steps
@@ -281,7 +281,7 @@ until the build above is run.
 7. Check: the Steam button / Quick Access (…) menus, and Shift+Tab with a keyboard, open the
    overlay over the spike; a notification and the Steam FPS counter (Performance overlay) are
    visible; the overlay closes; the sweeping bar keeps moving and the FPS holds. Record the result
-   in WordCrack's `steam-overlay-spike.md` (T-218).
+   in the downstream game port's `steam-overlay-spike.md` (downstream task T-218).
 
 On Windows, T-218 follows the same pattern: *Add a Non-Steam Game* pointing at
 `target/release/steam_overlay_spike.exe` (with `steam_api64.dll` and `steam_appid.txt` beside

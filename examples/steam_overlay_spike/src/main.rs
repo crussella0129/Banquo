@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-//! Steam overlay spike for `banquo-presenter` (ADR-014, WordCrack T-217).
+//! Steam overlay spike for `banquo-presenter` (ADR-014, downstream task T-217).
 //!
 //! ```text
 //! steam_overlay_spike [--renderer dx12|vulkan|gl|auto] [--run-seconds N] [--no-steam]

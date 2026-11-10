@@ -5,9 +5,9 @@ future work; later sprints' "ignored-ADR" review screens against this log.
 
 ---
 
-## 2026-11-07 — ADR-014: An embeddable presenter crate (`banquo-presenter`) — host-owned loop, continuous redraw, selectable backend, pre-device hook — *Accepted (design; verified on Windows DX12/Vulkan/GL 2026-11-08 by WordCrack T-218; Steam Deck pending, WordCrack T-226)* (WordCrack Sprint 1, T-216) — *extends ADR-001 and ADR-003*
+## 2026-11-07 — ADR-014: An embeddable presenter crate (`banquo-presenter`) — host-owned loop, continuous redraw, selectable backend, pre-device hook — *Accepted (design; verified on Windows DX12/Vulkan/GL 2026-11-08 by downstream task T-218; Steam Deck pending, downstream task T-226)* (downstream task T-216) — *extends ADR-001 and ADR-003*
 
-**Context.** WordCrack's Rust port renders through Banquo crates and ships on Steam. Its acceptance gate needs the Steam overlay (Shift+Tab, notifications, FPS counter) to work over a Banquo-presented wgpu surface on Windows and Steam Deck. `docs/steam-overlay.md` holds the research. Its conclusions:
+**Context.** A downstream game host renders through Banquo crates and ships on Steam. Its acceptance gate needs the Steam overlay (Shift+Tab, notifications, FPS counter) to work over a Banquo-presented wgpu surface on Windows and Steam Deck. `docs/steam-overlay.md` holds the research. Its conclusions:
 - the overlay hooks device and swap-chain creation, so Steam must be initialised **before** the graphics objects exist. With wgpu that means before `wgpu::Instance::new`, because DX12 creates its DXGI factory, Vulkan resolves implicit layers, and WGL creates its context at instance creation;
 - the overlay draws into the game's own frames, so the game must **present continuously**;
 - a Vulkan layer that only hooks X11 surfaces makes the window backend matter on Linux.
@@ -32,10 +32,10 @@ Banquo today cannot meet this as a library:
    - on Linux, force winit's X11 backend (`EventLoopBuilderExtX11::with_x11()`) when the host may run under Steam, because winit prefers Wayland and the overlay cannot hook Wayland surfaces;
    - a Steam-launched host must never run `os::ensure_detached()` (ADR-012), because the relaunch makes Steam think the game exited.
 
-**Fallback.** If hardware checks (WordCrack T-218) show the overlay failing on a backend, the order of retreat is:
+**Fallback.** If hardware checks (downstream task T-218) show the overlay failing on a backend, the order of retreat is:
 1. Change that platform's default to a backend that works. Selection already exists, so this is a one-line default change.
 2. If no wgpu backend shows the overlay on a platform, the host presents its CPU canvas through a native path the overlay is known to hook. Candidates: an SDL2 `SDL_Renderer` window (what the pygame build uses today), or a minimal D3D11 swap chain on Windows. This lives in the host repo, behind the same frame-in / pixels-out contract, so Banquo stays unsafe-free.
-3. A failed or unavailable Steam Deck check keeps WordCrack's overlay criterion open and moves to its next sprint. Nothing in Banquo is reverted.
+3. A failed or unavailable Steam Deck check keeps the downstream game port's overlay criterion open and moves to its next sprint. Nothing in Banquo is reverted.
 
 GDI or `softbuffer` presentation is **not** a fallback: the overlay does not run on software-rasterised presents.
 
@@ -47,17 +47,17 @@ GDI or `softbuffer` presentation is **not** a fallback: the overlay does not run
 - the pre-device hook;
 - frame acquisition, presentation and letterboxing of a host-provided texture or CPU canvas.
 
-When the split happens, `banquo-face` depends on `banquo-presenter` for presentation, and Banquo the terminal can move off eframe's loop without re-deciding anything here. The WordCrack research's "K5 `banquo-face`" presenter is this crate, renamed so the reserved name stays free. Materials (the WGSL chain) are added to `banquo-presenter` only as presentation passes. Whether a skin's material vocabulary later lives in `banquo-face` or a separate crate is decided at that split.
+When the split happens, `banquo-face` depends on `banquo-presenter` for presentation, and Banquo the terminal can move off eframe's loop without re-deciding anything here. The downstream game port's research called this presenter "K5 `banquo-face`"; it is this crate, renamed so the reserved name stays free. Materials (the WGSL chain) are added to `banquo-presenter` only as presentation passes. Whether a skin's material vocabulary later lives in `banquo-face` or a separate crate is decided at that split.
 
 **Consequences.**
 - Banquo gains its first library crate and its first non-eframe wgpu path. ADR-001 still governs the terminal binary; the presenter follows ADR-001's single-wgpu-version rule.
-- Any game host, WordCrack first, can satisfy the overlay's three requirements (init order, continuous presents, a hookable backend) by construction rather than by convention.
+- Any game host, the downstream game port first, can satisfy the overlay's three requirements (init order, continuous presents, a hookable backend) by construction rather than by convention.
 - The spike (`examples/steam_overlay_spike`, App ID 480) runs each backend and logs `IsOverlayEnabled` and `GameOverlayActivated_t`. Its results, and the owner's Windows and Deck checks, may revise the per-platform defaults in item 4. Today: DX12 is expected to work; Windows Vulkan, Windows GL and Deck Vulkan are risks, per `docs/steam-overlay.md`.
 - Costs: a second consumer API to keep stable; per-backend manual testing that CI cannot do (no GPU, no Steam).
 
 ---
 
-**Update 2026-11-08.** The builder also takes `allow_fallback(false)`. With it, a requested backend that has no adapter is an error (`NoUsableBackend`), not a silent fallback; the WordCrack T-235 test uses this so that each backend is really exercised. The default stays fallback-on, as decided above, and every fallback is logged as `BackendUnavailable`. A hidden test seam, `wgpu_instances_created()`, counts instance creation so that the pre-device hook order can be tested (T-244); it is not part of the supported API.
+**Update 2026-11-08.** The builder also takes `allow_fallback(false)`. With it, a requested backend that has no adapter is an error (`NoUsableBackend`), not a silent fallback; the downstream task T-235 test uses this so that each backend is really exercised. The default stays fallback-on, as decided above, and every fallback is logged as `BackendUnavailable`. A hidden test seam, `wgpu_instances_created()`, counts instance creation so that the pre-device hook order can be tested (T-244); it is not part of the supported API.
 
 ## 2026-07-16 — ADR-013: Appearance as data — ThemeSpec engine, portable embedded presets, deep-merge application, addressable config — *Accepted* (sprint 19)
 

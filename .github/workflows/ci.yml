@@ -2,12 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feat/**']
   pull_request:
-    branches: [main]
+    branches: [main, 'feat/**']
 
 env:
   CARGO_TERM_COLOR: always
+  # CI runners have no usable GPU and no Steam client. The presenter's
+  # per-backend test (`host_owned_loop`) and the spike's no-Steam tests skip
+  # their GPU-dependent parts when this is set; locally it stays unset.
+  BANQUO_ALLOW_HEADLESS: "1"
 
 jobs:
   check:
@@ -18,9 +22,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pinned to the toolchain of the local gate so new lints do not drift in.
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.99.1
           components: clippy, rustfmt
 
       # Linux: eframe/wgpu + winit's x11/wayland backends need system libs for
@@ -43,14 +49,12 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Build
-        run: cargo build --all-targets
-
-      - name: Test
-        run: cargo test
+      # The workspace gate: the terminal, the presenter and the spike.
+      - name: Format check
+        run: cargo fmt --all --check
 
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Format check
-        run: cargo fmt --check
+      - name: Test
+        run: cargo test --workspace

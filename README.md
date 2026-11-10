@@ -139,4 +139,11 @@ Banquo handles **multi-tab** but refuses splits/pane multiplexing (compose with 
 
 ## License
 
-Banquo's own code: MIT OR Apache-2.0. The vendored Iosevka font (`assets/fonts/`) is under the SIL Open Font License 1.1. See `assets/fonts/Iosevka-LICENSE.md`.
+Banquo's own code, including every crate in the workspace (`banquo`, `banquo-presenter` and the `steam_overlay_spike` example), is licensed under either of
+
+- the MIT licence ([`LICENSE-MIT`](LICENSE-MIT)), or
+- the Apache License, Version 2.0 ([`LICENSE-APACHE`](LICENSE-APACHE)),
+
+at your option.
+
+The vendored Iosevka font (`assets/fonts/`) is under the SIL Open Font License 1.1. See `assets/fonts/Iosevka-LICENSE.md`.

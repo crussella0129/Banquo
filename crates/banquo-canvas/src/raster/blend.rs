@@ -37,6 +37,22 @@ mod tests {
     }
 
     #[test]
+    fn blend_formula_arithmetic_shift() {
+        // (0 - 255) * 128 + 0 = -32640; an arithmetic shift right by 8 floors
+        // it to -128 (a truncating division would give -127), and
+        // -128 + 255 = 127.
+        assert_eq!(-32640i32 >> 8, -128);
+        assert_eq!(blend(0, 255, 128), 127);
+        assert_eq!(blend(255, 0, 255), 255);
+        // A source equal to the destination leaves it unchanged at every alpha.
+        for d in 0..=255u8 {
+            for a in 0..=255u8 {
+                assert_eq!(blend(d, d, a), d, "blend(s=d={d}, a={a})");
+            }
+        }
+    }
+
+    #[test]
     fn blend_alpha_edges() {
         assert_eq!(blend_alpha(0, 0), 0);
         assert_eq!(blend_alpha(255, 0), 255);
